@@ -1,6 +1,6 @@
-# mymuduo - 高性能 C++ 网络库
+# 基于 Reactor 模型的高性能异步网络分发框架
 
-基于 C++11 重构实现的异步网络底层框架，核心思想借鉴 Muduo 库。本项目旨在通过 Reactor 模型实现非阻塞 IO + 多线程并发，提供工业级高性能的网络通信能力。
+核心定位： 专为高并发、低延迟场景设计的 C++ 通信底座，集成了自定义 TLV 协议栈与七层负载均衡逻辑。
 
 ## 核心特性
 - **模型架构**：采用 Multiple Reactors + Thread Pool (One Loop Per Thread) 模型。主 Reactor 负责连接分发，子 Reactor 负责具体的 IO 事件处理。
