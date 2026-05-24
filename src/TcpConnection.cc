@@ -137,6 +137,23 @@ void TcpConnection::sendInLoop(const void *data, size_t len){
     }
 
 }
+void TcpConnection::forceclose(){
+    if(state_==kConnected ||state_ == kDisconnecting){
+        setState(kDisconnecting);
+        //相比shutdown必须捕获shared_from_this 因为是在forcecloseInLoop退栈前这个TcpConnection就会被handleClose销毁
+        auto self=shared_from_this();
+        loop_->runInLoop([self](){
+            self->forcecloseInLoop();
+        });
+    }
+}
+void TcpConnection::forcecloseInLoop(){
+    if (state_ == kConnected || state_ == kDisconnecting) {
+        //直接执行销毁逻辑
+        
+        handleClose(); 
+    }
+}
 //用户调用的函数
 void TcpConnection::shutdown()
 {

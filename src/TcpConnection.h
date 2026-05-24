@@ -31,7 +31,7 @@ public:
     void send(const std::string &buf);
     void send(Buffer *buf);
     void shutdown();
-
+    void forceclose();
 
     void setConnectionCallback(const ConnectionCallback &cb){connectionCallback_ = cb;}
     void setMessageCallback(const MessageCallback &cb){messageCallback_ = cb;}
@@ -67,6 +67,7 @@ private:
 
     void sendInLoop(const void * data,size_t len);
     void shutdownInLoop();
+    void forcecloseInLoop();
     
     EventLoop *loop_;
     std::string name_;
