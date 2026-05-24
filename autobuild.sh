@@ -12,17 +12,17 @@ cd build &&
     make
 cd ..
 
-# 2. 重新创建干净的安装目录 (平铺化)
-sudo rm -rf /usr/include/mymuduo
-sudo mkdir -p /usr/include/mymuduo
+# 2. 重新创建干净的安装目录 (平铺化)r5
+sudo rm -rf /usr/include/Vortex-Net
+sudo mkdir -p /usr/include/Vortex-Net
 
 # 3. 使用 find 强制搜寻并拷贝所有头文件到根目录
-# 这一步会把 src/ 和 utils/ 下的所有 .h 统统考到 /usr/include/mymuduo/ 这一层
-sudo find src -name "*.h" -exec cp {} /usr/include/mymuduo/ \;
-sudo find utils -name "*.h" -exec cp {} /usr/include/mymuduo/ \;
+# 把 src/ 和 utils/ 下的所有 .h 统统拷到 /usr/include/Vortex-Net/ 这一层
+sudo find src -name "*.h" -exec cp {} /usr/include/Vortex-Net/ \;
+sudo find utils -name "*.h" -exec cp {} /usr/include/Vortex-Net/ \;
 
 # 4. 拷贝动态库并刷新
-sudo cp $(pwd)/lib/libmymuduo.so /usr/lib
+sudo cp $(pwd)/lib/libVortex-Net.so /usr/lib
 sudo ldconfig
 
 echo "Build and Flattened Installation Success!"

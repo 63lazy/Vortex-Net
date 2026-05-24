@@ -66,10 +66,10 @@ void TimerQueue::handleRead(){
     for(const auto &it : expired){
         it.second->run();
     }
-    
     for(auto &it:expired){
-        //如果该定时器需要重复则重启定时器
-        if(it.second->repeat()){
+        //如果该定时器需要重复且没有要求延迟删除则重启定时器则重新insert进入红黑树
+        if(it.second->repeat()&&
+           cancelingTimers_.find(it.second)==cancelingTimers_.end()){
             it.second->restart(now);
             insert(it.second);
         }
@@ -77,7 +77,8 @@ void TimerQueue::handleRead(){
             delete it.second;
         }
     }
-
+    cancelingTimers_.clear();
+    
     //获取红黑树中最早的时间，重设内核闹钟
     if(!timers_.empty()){
         Timestamp nextExpired = timers_.begin()->second->expiration();
@@ -98,6 +99,9 @@ std::vector<Entry> TimerQueue::getExpired(Timestamp now){
 
     std::copy(timers_.begin(),it,std::back_inserter(expired));
     timers_.erase(timers_.begin(),it);
+    for(auto &it:expired){
+        activeTimers_.insert(it.second);
+    }
     return expired;
 }
 
@@ -130,5 +134,31 @@ bool TimerQueue::insert(Timer* timer){
 
     //插入红黑树
     timers_.insert(Entry(when,timer));
+    activeTimers_.insert(timer);
     return erliest;
+}
+
+void TimerQueue::cancel(TimerId timerid){
+    loop_->runInLoop([this,timerid](){
+        cancelInLoop(timerid);
+    });
+}
+void TimerQueue::cancelInLoop(TimerId timerid){
+    Timer *timer=timerid.timer_;
+    auto it=activeTimers_.find(timer);
+
+    //说明timer还未执行
+    if(it!=activeTimers_.end()){
+        auto it=timers_.find({timer->expiration(),timer});
+        //是第一个tiemr
+        if(it==timers_.begin()){
+            resetTimerfd(timerfd_,(*(it++)).first);
+        }
+        timers_.erase(Entry(timer->expiration(),timer));
+        activeTimers_.erase(timer);
+        delete timer;
+    }
+    else if(callingExpiredTimers_){
+        cancelingTimers_.insert(timer);
+    }
 }

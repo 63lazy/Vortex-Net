@@ -20,7 +20,7 @@ void EventLoopThreadPool::start(const ThreadInitCallback &cb){
         loops_.push_back(t->startLoop());
     }
     //整个服务端只有一个线程，运行这baseloop_
-    if(numThreads_==0){
+    if(numThreads_==0&&cb){
         cb(baseloop_);
     }
 }

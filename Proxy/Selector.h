@@ -1,24 +1,19 @@
 #pragma once
 #include <vector>
-#include <mymuduo/Callbacks.h>
-#include <mymuduo/InetAddress.h>
-#include <mymuduo/EventLoop.h>
+#include <Vortex-Net/Callbacks.h>
+#include <Vortex-Net/InetAddress.h>
+#include <Vortex-Net/EventLoop.h>
 #include <mutex>
 #include <atomic>
-struct ServerNode{
-    InetAddress addr;
-    int weight;
-    int current_weight;
-    bool is_alive;
-
-};
+#include <memory>
+#include "ServerNode.h"
 class Selector{
 public:
     Selector(EventLoop *loop):loop_(loop){}
-    void addServer(const int &port,const std::string &IP,const int &weight);
+    void addNode(const std::shared_ptr<ServerNode> node);
     InetAddress getNextServer();
 private:
-    std::vector<ServerNode> serverGroup_;
+    std::vector<std::shared_ptr<ServerNode>> serverGroup_;
     EventLoop *loop_;
     
     std::mutex mutex_;

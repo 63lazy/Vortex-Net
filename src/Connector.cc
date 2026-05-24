@@ -22,12 +22,13 @@ static EventLoop *CheckloopNotNull(EventLoop *loop){
     }
     return loop;
 }
-Connector::Connector(EventLoop *loop,InetAddress serverAddr):
+Connector::Connector(EventLoop *loop,const InetAddress &serverAddr):
                      addr_(serverAddr),
                      loop_(CheckloopNotNull(loop)),                     
                      state_(kDisconnected),
                      connect_(false),
-                     retryDelayMs_(500)
+                     retryDelayMs_(500),
+                     retry_(false)
 {
     LOG_INFO("Connector::ctor[%p]",this);
 }
@@ -59,7 +60,8 @@ void Connector::connect(){
         case EAGAIN:
         case ECONNREFUSED: // 拒绝连接
         case ENETUNREACH:  // 网络不可达
-            retry(sockfd);
+            if(retry_)
+                retry(sockfd);
             break;
         default:
             ::close(sockfd);
@@ -123,7 +125,7 @@ void Connector::retry(int sockfd){
     ::close(sockfd);
     setState(kDisconnected);
 
-    if(connect_){
+    if(connect_&&retry_){
         LOG_INFO("Connector::retry - Retry connecting to %s in %d milliseconds", addr_.toIpPort().c_str(),retryDelayMs_);
         loop_->runAfter(retryDelayMs_/1000,[self=shared_from_this()](){
             self->start();
@@ -132,7 +134,12 @@ void Connector::retry(int sockfd){
         retryDelayMs_=std::min(2*retryDelayMs_,kMaxRetryDelayMs);
     }
     else{
-        LOG_INFO("Connector::retry:do not connect");
+        //如果禁止重试且传入了errorcallback_说明是健康检查，执行CheckerTask传入的errorcallback_快速返回连接状态
+        if(!retry_&&errorCallback_){
+            loop_->queueInLoop(errorCallback_);
+        }
+        else if(!connect_)
+            LOG_INFO("Connector::retry:do not connect");
     }
 }
 void Connector::stop(){

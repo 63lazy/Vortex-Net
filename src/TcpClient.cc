@@ -12,7 +12,7 @@ static EventLoop *CheckloopNotNull(EventLoop *loop){
     }
     return loop;
 }
-TcpClient::TcpClient(EventLoop *loop,InetAddress &serverAddr,std::string &name):
+TcpClient::TcpClient(EventLoop *loop,const InetAddress &serverAddr,std::string &name):
                      loop_(CheckloopNotNull(loop)),
                      connector_(std::make_shared<Connector>(loop,serverAddr)),
                      name_(name),
@@ -23,6 +23,9 @@ TcpClient::TcpClient(EventLoop *loop,InetAddress &serverAddr,std::string &name):
     connector_->setNewConnectionCallback([this](int sockfd){
         newConnection(sockfd);
     });
+    if(errorCallback_){
+        connector_->setErrorCallback(errorCallback_);
+    }
 }
 
 void TcpClient::connect(){

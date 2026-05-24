@@ -8,6 +8,7 @@ public:
     {}
 
     friend class TimerQueue;
+    
 private:
     Timer *timer_;
     uint64_t sequence_;

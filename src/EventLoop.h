@@ -41,6 +41,10 @@ public:
         // 传入 interval，TimerQueue内部handleRead会处理为 repeat逻辑
         return timerQueue_->addTimer(std::move(cb),time,interval);
     }
+    void cancel(TimerId timerid){
+        return timerQueue_->cancel(timerid);
+    }
+    
     void wakeup();
 
     void updateChannel(Channel* channel); //更新channel

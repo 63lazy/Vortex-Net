@@ -23,7 +23,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 add_subdirectory(utils)
 
 # 创建网络核心库：改为 SHARED (动态库)
-add_library(mymuduo SHARED 
+add_library(Vortex-Net SHARED 
     src/InetAddress.cc 
     src/EventLoop.cc 
     src/Channel.cc 
@@ -43,4 +43,4 @@ add_library(mymuduo SHARED
 )
 
 # 链接选项
-target_link_libraries(mymuduo pthread utils)
+target_link_libraries(Vortex-Net pthread utils)
