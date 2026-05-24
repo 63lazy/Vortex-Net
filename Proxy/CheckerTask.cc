@@ -1,5 +1,6 @@
 #include "CheckerTask.h"
 #include "ServerNode.h"
+#include <cstring> 
 #include <netinet/tcp.h> 
 CheckerTask::CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr<ServerNode> node):
                 client_(std::make_shared<TcpClient>(loop,node->getAddr(),name)),
@@ -79,10 +80,10 @@ void CheckerTask::onError(int saveError){
         return;
         LOG_WARN("Local resource limit reached, skipping probe for %s",node_->getAddr().toIpPort().c_str());
     }
-    LOG_ERROR("Probe failed for %s Error: %d",node_->getAddr().toIpPort().c_str(),strerror(saveError));
+    LOG_ERROR("Probe failed for %s Error: %s",node_->getAddr().toIpPort().c_str(),strerror(saveError));
 
-    loop_->cancel(timerId_);
+    loop_->cancel(*timerId_);
     node_->updateStatus(true);
 
-    client_.stop();
+    client_->stop();
 }

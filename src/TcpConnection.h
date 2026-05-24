@@ -2,6 +2,7 @@
 #include "noncopy.h"
 #include "InetAddress.h"
 #include "Callbacks.h"
+#include "Channel.h"
 #include "Buffer.h"
 #include "Timestamp.h"
 #include <memory>
@@ -31,7 +32,7 @@ public:
     void send(const std::string &buf);
     void send(Buffer *buf);
     void shutdown();
-    void forceclose();
+    void forceClose();
 
     void setConnectionCallback(const ConnectionCallback &cb){connectionCallback_ = cb;}
     void setMessageCallback(const MessageCallback &cb){messageCallback_ = cb;}
@@ -55,6 +56,8 @@ public:
     //获取context
     void setContext(const std::any context){context_ = context;}  
     std::any &getContext(){return context_;}
+
+    int fd(){return channel_->fd();}
 private:
 
     enum StateE{kDisconnected,kConnecting,kConnected,kDisconnecting};
@@ -67,7 +70,7 @@ private:
 
     void sendInLoop(const void * data,size_t len);
     void shutdownInLoop();
-    void forcecloseInLoop();
+    void forceCloseInLoop();
     
     EventLoop *loop_;
     std::string name_;
