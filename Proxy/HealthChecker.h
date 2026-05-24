@@ -13,7 +13,6 @@ public:
 private:
 
     EventLoop *loop_;
-
     //五秒进行一轮
     int checkInterval_{5};
     std::vector<task_ptr> tasks_;

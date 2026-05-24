@@ -12,6 +12,7 @@ public:
 private:
     void onConnection(const TcpConnectionPtr &conn);
     void onTimeout();
+    void onError(int saveError);
     //待
 
     std::shared_ptr<TcpClient> client_;

@@ -27,6 +27,9 @@ void Logger::log(std::string msg){
     case ERROR:
         std::cout<<"[ERROR]: "<<msg<<std::endl; 
         break;
+    case WARN:
+        std::cout<<"[WARN]: "<<msg<<std::endl; 
+        break;
     default:
         std::cout<<"[UNKNOWN LEVEL]: "<<msg<<std::endl;
         break;

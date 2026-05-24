@@ -10,13 +10,13 @@
 #include <memory>
 class TcpClient :public NonCopyable,public std::enable_shared_from_this<TcpClient>{
 public:
-    using ErrorCallback = std::function<void()>;
+    using ErrorCallback = std::function<void(int saveError)>;
     TcpClient(EventLoop *loop,const InetAddress &serverAddr,std::string &name);
     void connect();
     void disconnect();
     void stop();
     void enableRetry(){retry_ = true;}
-
+    
     void setConnectionCallback(const ConnectionCallback cb){connectionCallback_ = std::move(cb);}
     //提供给上层的接口//
     void setErrorCallback(const ErrorCallback& cb){ connector_->setErrorCallback(cb); }

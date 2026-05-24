@@ -9,7 +9,7 @@ class Connector :NonCopyable ,public std::enable_shared_from_this<Connector>{
 public:
     Connector(EventLoop *loop,const InetAddress &serverAddr);
     using NewConnectionCallback=std::function<void (int sockfd)>;
-    using ErrorCallback = std::function<void()>;
+    using ErrorCallback = std::function<void(int saveError)>;
     void setNewConnectionCallback(const NewConnectionCallback& cb){ newConnectionCallback_ = std::move(cb); }
     //设置健康检查时触发的错误回调
     void setErrorCallback(const ErrorCallback& cb){ errorCallback_ = std::move(cb); }
@@ -29,7 +29,7 @@ private:
     void stopInLoop();
     void connect();
     void connecting(int sockfd);
-    void retry(int sockfd);
+    void retry(int sockfd,int saveError=0);
 
     void handleError();
     void handleWrite();

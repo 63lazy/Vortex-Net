@@ -11,9 +11,15 @@
         std::snprintf(buffer,1024 ,LogmsgFormat,##__VA_ARGS__); \
         logger.log(buffer); \
     } while (0)
-
-
-
+#define LOG_WARN(LogmsgFormat , ...) \
+    do { \
+        Logger &logger = Logger::instance(); \
+        logger.set_level(WARN); \
+        char buffer[1024]; \
+        std::snprintf(buffer,1024 ,LogmsgFormat,##__VA_ARGS__); \
+        logger.log(buffer); \
+    } while (0)
+    
 #define LOG_ERROR(LogmsgFormat , ...) \
     do { \
         Logger &logger = Logger::instance(); \
@@ -50,7 +56,8 @@ enum LogLevel {
     DEBUG,
     INFO,
     FATAL,
-    ERROR
+    ERROR,
+    WARN
 };
 
 // 输出一个日志类

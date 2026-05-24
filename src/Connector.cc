@@ -60,8 +60,7 @@ void Connector::connect(){
         case EAGAIN:
         case ECONNREFUSED: // 拒绝连接
         case ENETUNREACH:  // 网络不可达
-            if(retry_)
-                retry(sockfd);
+            retry(sockfd,savedErrno);
             break;
         default:
             ::close(sockfd);
@@ -121,7 +120,7 @@ void Connector::restart(){
     connect_=true;
     startInLoop();
 }
-void Connector::retry(int sockfd){
+void Connector::retry(int sockfd,int saveError){
     ::close(sockfd);
     setState(kDisconnected);
 
@@ -136,7 +135,11 @@ void Connector::retry(int sockfd){
     else{
         //如果禁止重试且传入了errorcallback_说明是健康检查，执行CheckerTask传入的errorcallback_快速返回连接状态
         if(!retry_&&errorCallback_){
-            loop_->queueInLoop(errorCallback_);
+            std::weak_ptr self(shared_from_this());
+            loop_->queueInLoop([saveError,self](){
+                if(auto connector = self.lock())
+                    connector->errorCallback_(saveError);
+            });
         }
         else if(!connect_)
             LOG_INFO("Connector::retry:do not connect");
