@@ -6,7 +6,7 @@ int main(){
     std::vector<std::shared_ptr<ServerNode>> serverGroup{
         std::make_shared<ServerNode>(InetAddress(8001), 5),
         std::make_shared<ServerNode>(InetAddress(8002), 1),
-        std::make_shared<ServerNode>(InetAddress(8003), 1)
+        //std::make_shared<ServerNode>(InetAddress(8003), 1)
     };
 
     HealthChecker checker(&loop);

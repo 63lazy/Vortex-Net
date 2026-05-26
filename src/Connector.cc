@@ -52,6 +52,8 @@ void Connector::connect(){
     switch(savedErrno)
     {
         case 0:
+        //只要SYN包发出去了就有可能返回EINPROGRESS 又由于socket非阻塞
+        //所以EINPROGRESS不一定代表连接可以成功且大部分情况都走EINPROGRESS
         case EINPROGRESS:  // 正在连接
         case EINTR:        // 被信号打断
         case EISCONN:      // 已经连上了
@@ -82,6 +84,12 @@ void Connector::connecting(int fd){
 }
 
 void Connector::handleWrite(){
+    // 如果状态已经不是 kConnecting，说明之前的回调（如 handleError）
+    // 已经把连接逻辑切断了，这里必须直接退出
+    if (state_ != kConnecting) {
+        return;
+    }
+
     int err;
     socklen_t len=sizeof(err);
     int ret=::getsockopt(channel_->fd(),SOL_SOCKET, SO_ERROR, &err, &len);
@@ -110,7 +118,7 @@ void Connector::handleWrite(){
     }
     else{
         LOG_ERROR("Connector::handleWrite - error: %d", err);
-        retry(channel_->fd());
+        retry(channel_->fd(),err);
     }
 }
 //因网络波动等原因断开了自动重连
@@ -121,6 +129,14 @@ void Connector::restart(){
     startInLoop();
 }
 void Connector::retry(int sockfd,int saveError){
+    //::close之前必须先清理channel
+    //防止close之后清理channel报错
+    if(channel_){
+        channel_->disableAll();
+        channel_->remove();
+        channel_.reset();
+    }
+
     ::close(sockfd);
     setState(kDisconnected);
 
@@ -170,5 +186,5 @@ void Connector::handleError(){
         err=errno;
     }
     LOG_ERROR("Connector::handleError - SO_ERROR: %d", err);
-    retry(channel_->fd());
+    retry(channel_->fd(),err);
 }

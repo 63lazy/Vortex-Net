@@ -19,6 +19,8 @@ public:
             success_count_++;
             if(success_count_>=success_standard_){
                 is_alive_=true;
+                //重置success_count_防止长时间探测后success_count_膨胀过大
+                success_count_=success_standard_;
                 LOG_INFO("node:%s %s lived",getAddr().toIp().c_str(),getAddr().toIpPort().c_str());
             }
         }
@@ -27,6 +29,7 @@ public:
             fail_count_++;
             if(fail_count_>=fail_standard_){
                 is_alive_=false;
+                fail_count_=fail_standard_;
                 LOG_INFO("node:%s %s died",getAddr().toIp().c_str(),getAddr().toIpPort().c_str());
             }
         }

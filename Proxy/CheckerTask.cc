@@ -39,6 +39,8 @@ void CheckerTask::onTimeout(){
     LOG_INFO("node:%s %s connect failed",node_->getAddr().toIp().c_str(),node_->getAddr().toIpPort().c_str());
     node_->updateStatus(false);
     client_->stop();
+
+    is_probing_ = false; 
 }
 
 void CheckerTask::onConnection(const TcpConnectionPtr &conn){
@@ -76,14 +78,15 @@ void CheckerTask::onError(int saveError){
     //LB自己的临时端口耗尽或内核缓冲区拥塞 ||fd达到上限
     if(saveError==EAGAIN|| saveError == EMFILE){
         //允许探测直接结束
+        LOG_WARN("Local resource limit reached, skipping probe for %s",node_->getAddr().toIpPort().c_str());
         is_probing_=false;
         return;
-        LOG_WARN("Local resource limit reached, skipping probe for %s",node_->getAddr().toIpPort().c_str());
     }
     LOG_ERROR("Probe failed for %s Error: %s",node_->getAddr().toIpPort().c_str(),strerror(saveError));
 
     loop_->cancel(*timerId_);
-    node_->updateStatus(true);
+    node_->updateStatus(false);
 
     client_->stop();
+    is_probing_=false;
 }

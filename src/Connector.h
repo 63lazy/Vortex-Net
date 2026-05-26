@@ -29,7 +29,7 @@ private:
     void stopInLoop();
     void connect();
     void connecting(int sockfd);
-    void retry(int sockfd,int saveError=0);
+    void retry(int sockfd,int saveError);
 
     void handleError();
     void handleWrite();

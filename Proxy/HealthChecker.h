@@ -13,8 +13,8 @@ public:
 private:
 
     EventLoop *loop_;
-    //五秒进行一轮
-    int checkInterval_{5};
+    //每轮的时间
+    int checkInterval_{3};
     std::vector<task_ptr> tasks_;
 
     std::atomic_int TaskIndex_{0};
