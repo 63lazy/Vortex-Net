@@ -21,8 +21,13 @@ sudo mkdir -p /usr/include/Vortex-Net
 sudo find src -name "*.h" -exec cp {} /usr/include/Vortex-Net/ \;
 sudo find utils -name "*.h" -exec cp {} /usr/include/Vortex-Net/ \;
 
-# 4. 拷贝动态库并刷新
+# 4. 拷贝 Proxy 头文件到独立子目录
+sudo mkdir -p /usr/include/Vortex-Net/Proxy
+sudo find Proxy/src -name "*.h" -exec cp {} /usr/include/Vortex-Net/Proxy/ \;
+
+# 5. 拷贝动态库并刷新
 sudo cp $(pwd)/lib/libVortex-Net.so /usr/lib
+sudo cp $(pwd)/Proxy/lib/libProxy.so /usr/lib
 sudo ldconfig
 
 echo "Build and Flattened Installation Success!"
