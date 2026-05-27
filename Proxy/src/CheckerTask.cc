@@ -8,12 +8,12 @@ CheckerTask::CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr
                 node_(node),
                 has_determined_(false)
 {
-    //待 （捕获裸指针）
-    client_->setConnectionCallback([this](const TcpConnectionPtr &conn){
-        onConnection(conn);
+    auto self = shared_from_this();
+    client_->setConnectionCallback([self](const TcpConnectionPtr &conn){
+        self->onConnection(conn);
     });
-    client_->setErrorCallback([this](int saveError){
-        onError(saveError);
+    client_->setErrorCallback([self](int saveError){
+        self->onError(saveError);
     });
 }
 
@@ -25,9 +25,10 @@ void CheckerTask::start(){
     has_determined_=false;
 
     client_->connect();
-    //待（野指针问题）
-    timerId_=loop_->runAfter(2.0,[this](){
-        onTimeout();
+
+    auto self = shared_from_this();
+    timerId_=loop_->runAfter(2.0,[self](){
+        self->onTimeout();
     });
 }
 
