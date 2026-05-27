@@ -3,17 +3,23 @@
 #include <atomic>
 #include <optional>
 #include "Selector.h"
-class CheckerTask{
+class CheckerTask: public std::enable_shared_from_this<CheckerTask>{
 public:
-    CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr<ServerNode> node);
+    static std::shared_ptr<CheckerTask> create(EventLoop *loop,
+                                               std::string &name,
+                                               const std::shared_ptr<ServerNode> node);
+    
     void start();
-
     void updateNodeStatus(bool success);
+    
 private:
+
+    CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr<ServerNode> node);
+    void Init();
+
     void onConnection(const TcpConnectionPtr &conn);
     void onTimeout();
     void onError(int saveError);
-    //待
 
     std::shared_ptr<TcpClient> client_;
     EventLoop *loop_;

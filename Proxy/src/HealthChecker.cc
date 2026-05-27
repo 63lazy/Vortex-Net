@@ -2,7 +2,7 @@
 #include <Vortex-Net/logger.h>
 void HealthChecker::addNode(const std::shared_ptr<ServerNode> node){
     std::string name="CheckerClient";
-    tasks_.emplace_back(std::make_shared<CheckerTask>(loop_,name,node));
+    tasks_.emplace_back(CheckerTask::create(loop_, name, node));
 }   
 
 void HealthChecker::start(){
@@ -10,7 +10,6 @@ void HealthChecker::start(){
         LOG_INFO("No available node");
         return ;
     }
-
     //计算打散事件
     double pacing = static_cast<double>(checkInterval_) / tasks_.size();
 

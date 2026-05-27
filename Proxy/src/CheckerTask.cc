@@ -2,12 +2,23 @@
 #include "ServerNode.h"
 #include <cstring> 
 #include <netinet/tcp.h> 
+std::shared_ptr<CheckerTask> CheckerTask::create(EventLoop *loop,
+                                    std::string &name,
+                                    const std::shared_ptr<ServerNode> node)
+{
+    auto task = std::shared_ptr<CheckerTask>(new CheckerTask(loop, name, node));
+    task->Init();
+    return task;
+}
+
 CheckerTask::CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr<ServerNode> node):
                 client_(std::make_shared<TcpClient>(loop,node->getAddr(),name)),
                 loop_(loop),
                 node_(node),
-                has_determined_(false)
-{
+                has_determined_(false),
+                is_probing_(false)
+{}
+void CheckerTask::Init(){
     auto self = shared_from_this();
     client_->setConnectionCallback([self](const TcpConnectionPtr &conn){
         self->onConnection(conn);
