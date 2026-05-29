@@ -9,7 +9,7 @@ int main(){
         std::make_shared<ServerNode>(InetAddress(8003), 1)
     };
 
-    std::thread checker_thread([serverGroup](){
+    /*std::thread checker_thread([serverGroup](){
         EventLoop loop_h;
         HealthChecker checker(&loop_h);
 
@@ -18,12 +18,12 @@ int main(){
         }
         checker.start();
         loop_h.loop();
-    });
+    });*/
 
     LB_Server server(&loop,addr,"LB_server",serverGroup);
     server.start();
 
     loop.loop();
     
-    checker_thread.join();
+    //checker_thread.join();
 };

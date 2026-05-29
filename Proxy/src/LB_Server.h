@@ -36,7 +36,8 @@ public:
 private:
     void onConnection(const TcpConnectionPtr &conn){
         if(conn->connected()){
-            InetAddress addr=std::move(selector_->getNextServer());
+            std::string ip=conn->peerAddress().toIp();
+            InetAddress addr=std::move(selector_->getNextServer(ip));
             if(addr.toIp()=="0.0.0.0"){
                 conn->shutdown();
             }
@@ -64,7 +65,6 @@ private:
     EventLoop *loop_;
     TcpServer server_;
 
-    std::shared_ptr<HealthChecker> checker_;
     std::shared_ptr<Selector> selector_;
 
     std::vector<std::shared_ptr<ServerNode>> serverGroup_;
