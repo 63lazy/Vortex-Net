@@ -26,7 +26,7 @@ public:
             onMessage(conn,buf,time);
         });
         
-        for(auto &node:serverGroup){
+        for(auto &node:serverGroup_){
             selector_->addNode(node);
         }
     }
@@ -39,7 +39,9 @@ private:
             std::string ip=conn->peerAddress().toIp();
             InetAddress addr=std::move(selector_->getNextServer(ip));
             if(addr.toIp()=="0.0.0.0"){
+                LOG_ERROR("No available backends for %s",conn->peerAddress().toIpPort().c_str());
                 conn->shutdown();
+                return;
             }
             LOG_INFO("LB_Server:TcpServer connection UP :%s",conn->peerAddress().toIpPort().c_str());
             //保证了rClient和LB_client属于同一个线程
