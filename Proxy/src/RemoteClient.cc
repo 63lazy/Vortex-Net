@@ -15,11 +15,12 @@ RemoteClient::RemoteClient(EventLoop *loop,
         onConnection(conn);
     });
     tc_->setMessageCallback([this](const TcpConnectionPtr &conn,
-                                            Buffer* buf, 
+                                            Buffer* buf,
                                             Timestamp time)
     {
         onMessage(conn,buf,time);
-    });    
+    });
+    tc_->enableRetry();
 }
 void RemoteClient::onConnection(const TcpConnectionPtr &conn){
     if(conn->connected()){

@@ -13,6 +13,7 @@ public:
     void setNewConnectionCallback(const NewConnectionCallback& cb){ newConnectionCallback_ = std::move(cb); }
     //设置健康检查时触发的错误回调
     void setErrorCallback(const ErrorCallback& cb){ errorCallback_ = std::move(cb); }
+    void enableRetry(){retry_=true;}
     InetAddress getServerAddr()const{ return addr_;}
     
     //开始请求连接

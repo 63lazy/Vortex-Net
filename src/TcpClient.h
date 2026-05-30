@@ -15,7 +15,7 @@ public:
     void connect();
     void disconnect();
     void stop();
-    void enableRetry(){retry_ = true;}
+    void enableRetry(){retry_ = true; connector_->enableRetry();}
     
     void setConnectionCallback(const ConnectionCallback cb){connectionCallback_ = std::move(cb);}
     //提供给上层的接口//
