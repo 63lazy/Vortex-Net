@@ -47,6 +47,5 @@ void TLVCodec::send(const TcpConnectionPtr& conn,uint16_t type,std::string msg){
 
     buf.append(reinterpret_cast<const char*>(&header),sizeof(MessageHeader));
     buf.append(msg.data(),msg.size());
-    std::string data=buf.retrieveAllAsString();
-    conn->send(data);
+    conn->send(buf);
 }
