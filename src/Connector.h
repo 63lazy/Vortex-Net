@@ -41,7 +41,7 @@ private:
     std::atomic_bool connect_;
     std::unique_ptr<Channel> channel_;
     NewConnectionCallback newConnectionCallback_;
-    //待
+    //健康检查传入的回调 用于快速返回
     ErrorCallback errorCallback_;
 
     int retryDelayMs_;

@@ -48,11 +48,11 @@ private:
             int64_t now = Timestamp::now().microSecondsSinceEpoch();
             int64_t lastActive = conn->lastReceiveTime(); // handleRead 里更新的变量
             
-            if (now - lastActive > 10 * 1000 * 1000) { // 真正超过 60s 没动静
+            if (now - lastActive > 10 * 1000 * 1000) { // 真正超过 10s 没动静
                 LOG_INFO("Idle timeout, kick connection: %s", conn->peerAddress().toIpPort().c_str());
                 conn->shutdown();
             }
-            // 如果没超时，由于是 runEvery，60 秒后它会自动再次进来检查
+            // 如果没超时，由于是 runEvery，10 秒后它会自动再次进来检查
         }
     }
     void onMessage(const TcpConnectionPtr &conn,

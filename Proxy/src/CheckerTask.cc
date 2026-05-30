@@ -83,6 +83,7 @@ void CheckerTask::onConnection(const TcpConnectionPtr &conn){
         is_probing_=false;
     }
 }
+//快速返回
 void CheckerTask::onError(int saveError){
     if (has_determined_.exchange(true)) {
         return;
