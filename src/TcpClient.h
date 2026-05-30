@@ -29,8 +29,6 @@ private:
     void removeConnection(const TcpConnectionPtr &conn);
     
     ConnectionCallback connectionCallback_;
-    //用于健康检查的errorcallback
-    ErrorCallback errorCallback_;
     MessageCallback messageCallback_;   
     WriteCompleteCallback writeCompleteCallback_;
     

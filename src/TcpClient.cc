@@ -23,9 +23,6 @@ TcpClient::TcpClient(EventLoop *loop,const InetAddress &serverAddr,std::string &
     connector_->setNewConnectionCallback([this](int sockfd){
         newConnection(sockfd);
     });
-    if(errorCallback_){
-        connector_->setErrorCallback(errorCallback_);
-    }
 }
 
 void TcpClient::connect(){
@@ -83,7 +80,6 @@ void TcpClient::newConnection(int sockfd){
 void TcpClient::removeConnection(const TcpConnectionPtr &conn){
     LOG_INFO("TcpClient::removeConnection [%s]",
              name_.c_str());
-    
     {
         std::lock_guard<std::mutex> lock(mutex_);
         conn_.reset();
