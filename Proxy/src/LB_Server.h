@@ -1,7 +1,7 @@
 #include <memory>
 #include <Vortex-Net/TcpServer.h>
 #include <Vortex-Net/logger.h>
-#include "RomoteClient.h"
+#include "RemoteClient.h"
 #include "Selector.h"
 #include "HealthChecker.h"
 class LB_Server{

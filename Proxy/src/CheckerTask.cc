@@ -88,7 +88,7 @@ void CheckerTask::onError(int saveError){
     if (has_determined_.exchange(true)) {
         return;
     }
-    //LB自己的临时端口耗尽或内核缓冲区拥塞 ||fd达到上限
+    //本地探测任务自己的临时端口耗尽或内核缓冲区拥塞 ||fd达到上限
     if(saveError==EAGAIN|| saveError == EMFILE){
         //允许探测直接结束
         LOG_WARN("Local resource limit reached, skipping probe for %s",node_->getAddr().toIpPort().c_str());

@@ -20,10 +20,11 @@ void Selector::addNode(const std::shared_ptr<ServerNode> node){
     }
     std::string ip_port=node->getAddr().toIpPort();
     //快速挂载一致性哈希虚拟节点
+    //虚拟节点数可以根据权重进行调整
     for(int i=0;i<kVirtualNodes;i++){
         std::string vnode_name = ip_port + "#" + std::to_string(i);
         size_t partition=std::hash<std::string>{}(vnode_name);
-       (*ring_)[partition]=node->getAddr();
+        (*ring_)[partition]=node->getAddr();
     }
 }   
 void Selector::removeNode(const std::shared_ptr<ServerNode> node){

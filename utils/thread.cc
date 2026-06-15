@@ -11,7 +11,7 @@ Thread::Thread(ThreadFunc func,const std::string& name)
 {
     setDefaultName();
 }
-//add 工业级网络库通常更倾向于在析构时，通过原子变量或信号通知线程停止，并调用 join() 等待其真正退出，以确保资源完全回收。
+//待 工业级网络库通常更倾向于在析构时，通过原子变量或信号通知线程停止，并调用 join() 等待其真正退出，以确保资源完全回收。
 Thread::~Thread(){
     //thread必须join或者detach二选一
     if(started_&&!joined_){
@@ -22,7 +22,7 @@ void Thread::start(){
     started_=true;
     auto sem=std::make_shared<sem_t>(); //分配堆上的内存 防止主线程结束过快 sem_t被快速回收
     sem_init(sem.get(),false,0);
-    //add 最好用[self = shared_from_this()]
+    //待 最好用[self = shared_from_this()]
     thread_=std::make_shared<std::thread>([this,sem](){//捕获智能指针增加引用计数
         tid_=CurrentThread::tid();
         sem_post(sem.get());

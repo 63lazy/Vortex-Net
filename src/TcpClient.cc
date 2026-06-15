@@ -119,6 +119,7 @@ bool TcpClient::send(Buffer *buf){
         conn->send(buf); 
         return true;
     }
+    //说明连接初始化还没有完成
     else
     {
         return false;
