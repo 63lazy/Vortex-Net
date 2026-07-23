@@ -84,6 +84,22 @@ void TcpConnection::send(Buffer *buf)
         }
     }
 }
+//按指针+长度精确发送 不消费缓冲区 消费(retrieve)由调用方自己控制
+void TcpConnection::send(const char *data, size_t len)
+{
+    if(state_==kConnected){
+        //不跨线程直接执行
+        if(loop_->isInLoopThread()){
+            sendInLoop(data,len);
+        }
+        //跨线程时data指向的内存(通常是Buffer内部)在排队期间可能失效 必须拷贝成string
+        else{
+            loop_->runInLoop([this,msg=std::string(data,len),guard=shared_from_this()](){
+                sendInLoop(msg.c_str(),msg.size());
+            });
+        }
+    }
+}
 //应用写的快 但内核发送数据慢 因此需要把数据写入缓冲区并设置水位回调
 void TcpConnection::sendInLoop(const void *data, size_t len){
     ssize_t nwrote=0;

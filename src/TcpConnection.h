@@ -31,6 +31,8 @@ public:
 
     void send(const std::string &buf);
     void send(Buffer *buf);
+    //按指针+长度精确发送 不消费任何缓冲区 由调用方自行retrieve
+    void send(const char *data, size_t len);
     void shutdown();
     void forceClose();
 
