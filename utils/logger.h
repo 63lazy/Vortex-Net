@@ -55,9 +55,9 @@
 enum LogLevel {
     DEBUG,
     INFO,
-    FATAL,
+    WARN,
     ERROR,
-    WARN
+    FATAL
 };
 
 // 输出一个日志类
