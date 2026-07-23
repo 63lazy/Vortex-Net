@@ -8,6 +8,7 @@
 class Connector :NonCopyable ,public std::enable_shared_from_this<Connector>{
 public:
     Connector(EventLoop *loop,const InetAddress &serverAddr);
+    ~Connector();
     using NewConnectionCallback=std::function<void (int sockfd)>;
     using ErrorCallback = std::function<void(int saveError)>;
     void setNewConnectionCallback(const NewConnectionCallback& cb){ newConnectionCallback_ = std::move(cb); }

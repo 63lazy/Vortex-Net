@@ -32,6 +32,15 @@ Connector::Connector(EventLoop *loop,const InetAddress &serverAddr):
 {
     LOG_INFO("Connector::ctor[%p]",this);
 }
+//防止connector已经被析构了epoll依旧返回事件访问这个对象的channel野指针
+Connector::~Connector(){
+    LOG_INFO("Connector::dtor[%p]",this);  
+    if(channel_)
+    {
+        channel_->disableAll();
+        channel_->remove();
+    }
+}
 
 void Connector::start(){
     connect_=true;
@@ -72,6 +81,13 @@ void Connector::connect(){
 
 void Connector::connecting(int fd){
     setState(kConnecting);
+    if(channel_){
+        int oldfd=channel_->fd();
+        channel_->disableAll();
+        channel_->remove();
+        channel_.reset();
+        ::close(oldfd);
+    }
     channel_.reset(new Channel(loop_,fd));
     channel_->setWriteCallback([this](){
         handleWrite();
@@ -102,10 +118,9 @@ void Connector::handleWrite(){
             channel_->disableAll();
             channel_->remove();
             //用queueInLoop重置智能指针，确定loop中的handleEvent已经跑完后再删除
-            auto self=shared_from_this();
-            loop_->queueInLoop([self](){
-                self->channel_.reset();
-            });
+            //转shared_ptr是因为std::function要求可拷贝，move-only的unique_ptr无法直接捕获
+            std::shared_ptr<Channel> ch(std::move(channel_));
+            loop_->queueInLoop([ch](){});
             if(newConnectionCallback_)
             {
                 newConnectionCallback_(sockfd);
@@ -126,24 +141,35 @@ void Connector::restart(){
     setState(kDisconnected);
     retryDelayMs_ = kInitRetryDelayMs;
     connect_=true;
-    startInLoop();
+    //延迟重连 防止因为异常断开导致startInLoop里新创建的channel对象又被回调队列里排队中的函数重置
+    loop_->runAfter(retryDelayMs_/1000.0,[weak=weak_from_this()](){
+        //如果connector已经不存在了就放弃重连
+        if(auto self=weak.lock())
+            self->startInLoop();
+    });
 }
 void Connector::retry(int sockfd,int saveError){
+    //先改状态，堵住 handleWrite 的守卫窗口（channel_已空但state仍为kConnecting）
+    setState(kDisconnected);
     //::close之前必须先清理channel
     //防止close之后清理channel报错
     if(channel_){
         channel_->disableAll();
         channel_->remove();
-        channel_.reset();
+        //把旧channel的所有权move进延迟任务：成员立刻置空供重连复用，
+        //对象本身推迟到本轮事件分发结束后再析构，避免在channel自己的回调里delete this
+        //转shared_ptr是因为std::function要求可拷贝，move-only的unique_ptr无法直接捕获
+        std::shared_ptr<Channel> ch(std::move(channel_));
+        loop_->queueInLoop([ch](){});
     }
-
     ::close(sockfd);
-    setState(kDisconnected);
+    
 
     if(connect_&&retry_){
         LOG_INFO("Connector::retry - Retry connecting to %s in %d milliseconds", addr_.toIpPort().c_str(),retryDelayMs_);
-        loop_->runAfter(retryDelayMs_/1000,[self=shared_from_this()](){
-            self->start();
+        loop_->runAfter(retryDelayMs_/1000.0,[weak=weak_from_this()](){
+            if(auto self=weak.lock())
+                self->start();
         });
         //指数退避//
         retryDelayMs_=std::min(2*retryDelayMs_,kMaxRetryDelayMs);
