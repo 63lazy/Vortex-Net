@@ -12,7 +12,7 @@ static EventLoop *CheckloopNotNull(EventLoop *loop){
     }
     return loop;
 }
-TcpClient::TcpClient(EventLoop *loop,const InetAddress &serverAddr,std::string &name):
+TcpClient::TcpClient(EventLoop *loop,const InetAddress &serverAddr,const std::string &name):
                      loop_(CheckloopNotNull(loop)),
                      connector_(std::make_shared<Connector>(loop,serverAddr)),
                      name_(name),
@@ -109,14 +109,31 @@ void TcpClient::stop(){
         conn->shutdown();
 }
 
-bool TcpClient::send(Buffer *buf){ 
+bool TcpClient::send(Buffer *buf){
     TcpConnectionPtr conn;
     {
         std::unique_lock<std::mutex> lock(mutex_);
         conn=conn_;
     }
     if(conn){
-        conn->send(buf); 
+        conn->send(buf);
+        return true;
+    }
+    //说明连接初始化还没有完成
+    else
+    {
+        return false;
+    }
+}
+//按指针+长度精确发送 不消费缓冲区 由调用方自己retrieve
+bool TcpClient::send(const char *data, size_t len){
+    TcpConnectionPtr conn;
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        conn=conn_;
+    }
+    if(conn){
+        conn->send(data,len);
         return true;
     }
     //说明连接初始化还没有完成

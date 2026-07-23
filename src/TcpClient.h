@@ -11,7 +11,7 @@
 class TcpClient :public NonCopyable,public std::enable_shared_from_this<TcpClient>{
 public:
     using ErrorCallback = std::function<void(int saveError)>;
-    TcpClient(EventLoop *loop,const InetAddress &serverAddr,std::string &name);
+    TcpClient(EventLoop *loop,const InetAddress &serverAddr,const std::string &name);
     void connect();
     void disconnect();
     void stop();
@@ -24,6 +24,8 @@ public:
     void setWriteCompleteCallback(const WriteCompleteCallback cb){writeCompleteCallback_ = std::move(cb);}
 
     bool send(Buffer *buf);
+    //按指针+长度精确发送 不消费缓冲区 返回false表示连接尚未建立
+    bool send(const char *data, size_t len);
 private:
     void newConnection(int sockfd);
     void removeConnection(const TcpConnectionPtr &conn);
