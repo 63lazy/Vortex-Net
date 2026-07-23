@@ -1,9 +1,10 @@
 #include <memory>
 #include <Vortex-Net/TcpServer.h>
 #include <Vortex-Net/logger.h>
-#include "RemoteClient.h"
-#include "Selector.h"
-#include "HealthChecker.h"
+#include <Vortex-Net/Proxy/Common/ServerNode.h>
+#include <Vortex-Net/Proxy/L4/RemoteClient.h>
+#include <Vortex-Net/Proxy/Common/Selector.h>
+#include <Vortex-Net/Proxy/L4/HealthCheck/HealthChecker.h>
 class LB_Server{
 public: 
     LB_Server(EventLoop *loop,

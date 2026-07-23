@@ -1,6 +1,14 @@
-#include <Vortex-Net/Proxy/LB_Server.h>
-#include <thread>
-int main(){
+#include <Vortex-Net/Proxy/L4/LB_Server.h>
+#include <Vortex-Net/Proxy/L4/HealthCheck/HealthChecker.h>
+#include <Vortex-Net/EventLoop.h>
+#include <Vortex-Net/InetAddress.h>
+#include <Vortex-Net/Proxy/Common/ServerNode.h>
+
+#include <memory>
+#include <vector>
+
+int main()
+{
     EventLoop loop;
     InetAddress addr(8000);
     std::vector<std::shared_ptr<ServerNode>> serverGroup{
@@ -11,9 +19,9 @@ int main(){
 
     HealthChecker checker(&loop);
 
-    for(auto& node : serverGroup) {
-        checker.addNode(node); 
+    for (auto& node : serverGroup) {
+        checker.addNode(node);
     }
     checker.start();
     loop.loop();
-};
+}

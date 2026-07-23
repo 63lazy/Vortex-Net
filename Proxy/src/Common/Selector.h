@@ -7,14 +7,16 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
-#include "ServerNode.h"
+#include <Vortex-Net/Proxy/Common/ServerNode.h>
 class Selector{
 public:
     using ServerNodeList=std::vector<std::shared_ptr<ServerNode>>;
     Selector(EventLoop *loop):loop_(loop), serverGroup_(std::make_shared<ServerNodeList>()), ring_(std::make_shared<std::map<size_t, InetAddress>>()) {}
     void addNode(const std::shared_ptr<ServerNode> node);
     void removeNode(const std::shared_ptr<ServerNode> node);
+    //加权轮询
     InetAddress getNextServer();
+    //一致性哈希
     InetAddress getNextServer(const std::string& key);
 private:
     //配合写时复制使用

@@ -1,4 +1,4 @@
-#include <Vortex-Net/Proxy/LB_Server.h>
+#include <Vortex-Net/Proxy/L4/LB_Server.h>
 #include <thread>
 int main(){
     EventLoop loop;
