@@ -9,20 +9,7 @@ RemoteClient::RemoteClient(EventLoop *loop,
                            const std::string &name):
                            tc_(std::make_shared<TcpClient>(loop,serverAddr,name)),
                            loop_(loop)
-{
-    auto weakptr=weak_from_this();
-    tc_->setConnectionCallback([weakptr](const TcpConnectionPtr &conn){
-        if(auto self=weakptr.lock())
-            self->onConnection(conn);
-    });
-    tc_->setMessageCallback([weakptr](const TcpConnectionPtr &conn,
-                                            Buffer* buf,
-                                            Timestamp time)
-    {
-        if(auto self=weakptr.lock())
-            self->onMessage(conn,buf,time);
-    });
-}
+{}
 void RemoteClient::onConnection(const TcpConnectionPtr &conn){
     if(conn->connected()){
         //连上时就已经绑定了客户端 说明是懒加载产生的
