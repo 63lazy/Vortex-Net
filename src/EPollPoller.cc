@@ -25,7 +25,7 @@ EPollPoller::~EPollPoller(){
 }
 //eventloop通过poll获取需要处理事件的channel列表//
 Timestamp EPollPoller::poll(int timeoutMs,ChannelList* activeChannels){
-    //其实用LOG_DEBUG比较合适//
+    //LOG_DEBUG比较合适//
     LOG_INFO("fun=%s:fd total count=%d",__FUNCTION__,(int)channels_.size());
     int numEvents=epoll_wait(epollfd_,&*events_.begin(),static_cast<int>(events_.size()),timeoutMs);
     int saveError = errno;

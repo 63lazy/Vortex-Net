@@ -134,7 +134,7 @@ void TcpConnection::sendInLoop(const void *data, size_t len){
             }
         }
     }
-    //说明一次write没发完 剩余数据保存到缓冲区供epoll监控唤醒
+    //说明一次write没发完 剩余数据保存到输出缓冲区供epoll监控唤醒
     if(!faultError && remaining>0){
         //目前缓冲区待发送数据
         size_t oldlen = outputBuffer_.readableBytes();
@@ -165,8 +165,7 @@ void TcpConnection::forceClose(){
 }
 void TcpConnection::forceCloseInLoop(){
     if (state_ == kConnected || state_ == kDisconnecting) {
-        //直接执行销毁逻辑
-        
+        //直接执行销毁逻辑 而不是像shutdown等对方发来的FIN包触发handleClose
         handleClose(); 
     }
 }
@@ -202,7 +201,7 @@ void TcpConnection::connectDestroyed(){
     if(state_==kConnected){
         setState(kDisconnected);
         channel_->disableAll();
-        connectionCallback_(shared_from_this());
+        connectionCallback_(shared_from_this());  
     }
     channel_->remove();
 }

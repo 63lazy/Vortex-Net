@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 #define PROTOCOL_MAGIC 0x12345678
 #define PROTOCOL_VERSION
-//接收数据并反序列化
+//接收数据并反序列化 回显消息
 void TLVCodec::onTLVmessage(const TcpConnectionPtr& conn,Buffer* buf,Timestamp time){
     while(buf->readableBytes()>=sizeof(MessageHeader)){
         MessageHeader header;

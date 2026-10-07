@@ -28,7 +28,7 @@ public:
         {
             onMessage(conn,buf,time);
         });
-        
+        //构造时仅传入默认Echo集群配置
         for(auto &node:serverGroup_){
             default_selector_->addNode(node);
         }
@@ -99,7 +99,7 @@ private:
             std::string targetAddr=addr.toIpPort();
             auto remoteClientPtr = localPool->borrowConnection(targetAddr);
             remoteClientPtr->bindClient(conn);
-            //用解析器绑定这个后端连接
+            //用解析器绑定这个后端连接 后续转发消息体时需要用到
             parser->BoundRClient(remoteClientPtr);
             //仅消费掉头部
             size_t header_len=parser->headerLen();

@@ -39,6 +39,7 @@ int Socket::connect(int sockfd,const InetAddress* serverAddr){
 
 //TcpConnection::shutdownInLoop触发
 void Socket::shutdownWrite(){
+    //向对端发送FIN包
     if(::shutdown(sockfd_,SHUT_WR)<0)
     {
         LOG_ERROR("shutdownwrite error");
