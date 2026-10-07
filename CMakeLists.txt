@@ -21,7 +21,7 @@ set(CMAKE_OBJECT_DIRECTORY ${CMAKE_BINARY_DIR}/obj)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 # 添加头文件搜索路径
-include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Add utils subdirectory
 add_subdirectory(utils)
@@ -52,18 +52,18 @@ target_link_libraries(Vortex-Net pthread utils)
 # --- Proxy 动态库 ---
 # 构建时模拟 Vortex-Net 头文件安装路径，使 Proxy 中的 <Vortex-Net/xxx.h> 能正确解析
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/Vortex-Net)
-file(COPY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/src/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net
      FILES_MATCHING PATTERN "*.h")
-file(COPY ${CMAKE_SOURCE_DIR}/utils/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/utils/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net
      FILES_MATCHING PATTERN "*.h")
 # Proxy 头文件映射到 Vortex-Net/Proxy/ 子目录（安装后外部可用 <Vortex-Net/Proxy/xxx.h> 包含）
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/Vortex-Net/Proxy)
-file(COPY ${CMAKE_SOURCE_DIR}/Proxy/src/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net/Proxy
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Proxy/src/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net/Proxy
      FILES_MATCHING PATTERN "*.h")
 include_directories(${CMAKE_BINARY_DIR}/include)
 
 # Proxy 内部头文件路径
-include_directories(${CMAKE_SOURCE_DIR}/Proxy/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Proxy/src)
 
 # --- L4 Proxy（四层负载均衡）---
 # 源文件：L4 专用组件 + HealthCheck（健康检查/节点选择）
@@ -80,7 +80,7 @@ add_library(L4_Proxy SHARED
 target_link_libraries(L4_Proxy pthread Vortex-Net)
 
 set_target_properties(L4_Proxy PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Proxy/lib
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Proxy/lib
 )
 
 # --- L7 Proxy（七层负载均衡）---
@@ -99,5 +99,5 @@ add_library(L7_Proxy SHARED
 target_link_libraries(L7_Proxy pthread Vortex-Net)
 
 set_target_properties(L7_Proxy PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Proxy/lib
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Proxy/lib
 )
