@@ -77,7 +77,7 @@ private:
     //扩容函数//
     void makeSpace(size_t len){
         if(writeableBytes()+prependableBytes()<len+kCheapPrepend_){
-            buffer_.resize(readerIndex_+len);
+            buffer_.resize(writerIndex_+len);
         }
         else{
             size_t readable=readableBytes();
