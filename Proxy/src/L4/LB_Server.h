@@ -31,6 +31,9 @@ public:
             selector_->addNode(node);
         }
     }
+    void setThreadNum(int n){
+        server_.setThreadNum(n);
+    }
     void start(){
         server_.start();
     }
