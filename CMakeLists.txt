@@ -60,10 +60,24 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/utils/ DESTINATION ${CMAKE_BINARY_DIR}/inc
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/Vortex-Net/Proxy)
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Proxy/src/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net/Proxy
      FILES_MATCHING PATTERN "*.h")
+# Http 通用应用层头文件映射到 Vortex-Net/Http/ 子目录（外部可用 <Vortex-Net/Http/xxx.h> 包含）
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/Vortex-Net/Http)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Http/ DESTINATION ${CMAKE_BINARY_DIR}/include/Vortex-Net/Http
+     FILES_MATCHING PATTERN "*.h")
 include_directories(${CMAKE_BINARY_DIR}/include)
 
 # Proxy 内部头文件路径
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Proxy/src)
+
+# --- Http（通用应用层 HTTP 解析与服务，非代理）---
+add_library(Http SHARED
+    Http/HttpParser.cc
+    Http/picohttpparser.c
+)
+target_link_libraries(Http pthread Vortex-Net)
+set_target_properties(Http PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib
+)
 
 # --- L4 Proxy（四层负载均衡）---
 # 源文件：L4 专用组件 + HealthCheck（健康检查/节点选择）
@@ -84,7 +98,7 @@ set_target_properties(L4_Proxy PROPERTIES
 )
 
 # --- L7 Proxy（七层负载均衡）---
-# 源文件：L7 专用组件（HTTP 解析 + 连接池 + 后端连接管理）
+# 源文件：L7 专用组件（HTTP 上下文 + 连接池 + 后端连接管理）
 add_library(L7_Proxy SHARED
     # L7 七层负载均衡
     Proxy/src/L7/RemoteClient.cc
@@ -92,11 +106,9 @@ add_library(L7_Proxy SHARED
     Proxy/src/L7/ConnecitonPool.cc
     # Common 通用节点选择器
     Proxy/src/Common/Selector.cc
-    # 第三方：HTTP 请求/响应解析器
-    Proxy/src/L7/picohttpparser.c
 )
 
-target_link_libraries(L7_Proxy pthread Vortex-Net)
+target_link_libraries(L7_Proxy pthread Vortex-Net Http)
 
 set_target_properties(L7_Proxy PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Proxy/lib
