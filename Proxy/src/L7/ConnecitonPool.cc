@@ -55,6 +55,7 @@ void ConnectionPool::returnConnection(const std::string& targetAddr,
 {
     remoteClient->unbind();
     remoteClient->setUnbusy();
+    remoteClient->clearPendingBuffer();
 
     auto &vec = idle_map_[targetAddr];
     if (vec.size() < max_conns_)

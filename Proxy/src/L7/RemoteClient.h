@@ -29,6 +29,7 @@ public:
     void setErrorCallback(ErrorCallback cb){errorCallback_ = std::move(cb);}
     void setReturnCallback(ReturnCallback cb){returnCallback_ = std::move(cb);}
     void forceclose(){tc_->disconnect();}
+    void clearPendingBuffer(){ pendingBuffer_.retrieveAll();}
 private:
     void onConnection(const TcpConnectionPtr &conn);
     void onMessage(const TcpConnectionPtr &conn,Buffer *buf,Timestamp time);
