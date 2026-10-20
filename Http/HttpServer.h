@@ -65,6 +65,9 @@ public:
     void start(){
         server_.start();
     }
+    void setThreadNums(int nums){
+        server_.setThreadNum(nums);
+    }
 private:
     struct ConnState { //每个连接调度解析器 + body累积区 
         std::shared_ptr<HttpParser> parser = std:: make_shared <HttpParser>();
