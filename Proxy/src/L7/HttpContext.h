@@ -7,8 +7,7 @@
 
 class RemoteClient;
 
-// 网关专用 HTTP 上下文：组合纯解析器 HttpParser + 后端连接 client_。
-// 对外接口与旧版 HttpContext 完全一致，因此 LB_Server 无需改动。
+// 网关专用 HTTP 上下文：组合纯解析器 HttpParser + 后端连接 client_
 class HttpContext{
 public:
     using remoteClientPtr=std::shared_ptr<RemoteClient>;
@@ -25,6 +24,7 @@ public:
     size_t headerLen(){ return parser_.headerLen(); }
     size_t bytesRemaining(){ return parser_.bytesRemaining(); }
     bool isResponseChunked(){ return parser_.isResponseChunked(); }
+    const HttpRequest& request(){return parser_.request();}
 
     // 组合 reset：先重置解析器；解析的是响应时再释放后端连接
     void reset(){
@@ -33,7 +33,7 @@ public:
             client_.reset();
     }
 
-    // ---- 网关特有：后端连接绑定与模型路由 ----
+    //网关特有：后端连接绑定与模型路由
     void BoundRClient(const remoteClientPtr &client){ client_= client; }
     remoteClientPtr& getClient(){ return client_; }
 

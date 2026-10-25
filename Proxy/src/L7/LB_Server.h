@@ -1,4 +1,5 @@
 #include <memory>
+#include<string>
 #include <Vortex-Net/TcpServer.h>
 #include <Vortex-Net/logger.h>
 #include <Vortex-Net/Proxy/Common/ServerNode.h>
@@ -6,6 +7,7 @@
 #include <Vortex-Net/Proxy/L7/RemoteClient.h>
 #include <Vortex-Net/Proxy/L7/ConnectionPool.h>
 #include <Vortex-Net/Proxy/L7/HttpContext.h>
+#include <Vortex-Net/Proxy/L7/Middleware/ApiKeyAuth.h>
 class LB_Server{
 public: 
     using remoteClientPtr=std::shared_ptr<RemoteClient>;
@@ -16,8 +18,9 @@ public:
                 ):
                 loop_(loop),
                 server_(loop,listenAddr,nameArg),
-                default_selector_(std::make_shared<Selector>(loop)),
-                serverGroup_(std::move(serverGroup))
+                im_selector_(std::make_shared<Selector>(loop)),
+                serverGroup_(std::move(serverGroup)),
+                auth_()
     {
         server_.setConnectionCallback([this](const TcpConnectionPtr &conn){
             onConnection(conn);
@@ -30,7 +33,7 @@ public:
         });
         //构造时仅传入默认Echo集群配置
         for(auto &node:serverGroup_){
-            default_selector_->addNode(node);
+            im_selector_->addNode(node);
         }
     }
     void setThreadNum(int n){
@@ -52,6 +55,16 @@ public:
         else{
             it->second->addNode(node); 
         }
+    }
+    //用户调用用于初始化默认大模型节点
+    void addDefaultLlmNode(const std::shared_ptr<ServerNode>& node) {
+        if (!default_llm_selector_) {
+            default_llm_selector_ = std::make_shared<Selector>(loop_);
+        }
+        default_llm_selector_->addNode(node);
+    }
+    void loadKeys(const std::vector<std::string> &keys){
+        auth_.load(keys);
     }
 private:
     void onConnection(const TcpConnectionPtr &conn){
@@ -86,20 +99,41 @@ private:
         }
         //成功解析头部
         else if(parser->parseRequest(buf,time)){
-            std::string model_name = parser->parseModelName(buf);
-            InetAddress addr;
             std::shared_ptr<Selector> target_selector;
-            //查找动态路由表，获取对应的负载均衡环
-            auto it = route_table_.find(model_name);
-            if(it!=route_table_.end()){
-                target_selector = it->second; // 命中专属集群（如Qwen或Llama）
+            InetAddress addr;
+            if(parser->request().path.starts_with("/v1"))
+            {
+                
+                if(!auth_.authenticate(parser->request().headers)){
+                    const auto resp = ApiKeyAuthenticator::unauthorizedResponse();
+                    conn->send(resp.data(), resp.size());
+                    conn->shutdown();
+                    return;
+                }
+                std::string model_name = parser->parseModelName(buf);
+                auto it=route_table_.find(model_name);
+                if(it!=route_table_.end()) target_selector=it->second;
+                else if(default_llm_selector_) target_selector=default_llm_selector_;
+                else {
+                    //既没有专属集群，也没有默认集群，直接拒绝
+                    conn->send("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    conn->shutdown();
+                    return;
+                }
+                addr=std::move(target_selector->getNextServer(model_name));
             }
-            else{
-                target_selector = default_selector_; // 未命中，走默认兜底集群（如Echo）
+            else if(parser->request().path.starts_with("/im")){
+                target_selector=im_selector_;
+                addr = std::move(target_selector->getNextServer(parser->request().path));
             }
-            if(model_name != "") addr=std::move(target_selector->getNextServer(model_name));
-            else addr = std::move(target_selector->getNextServer(parser->request().path));
+            else {
+                //未知业务路径，网关直接返回 404 截断
+                conn->send("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                conn->shutdown();
+                return;
+            }
             std::string targetAddr=addr.toIpPort();
+            
             auto remoteClientPtr = localPool->borrowConnection(targetAddr);
             remoteClientPtr->bindClient(conn);
             //用解析器绑定这个后端连接 后续转发消息体时需要用到
@@ -126,9 +160,15 @@ private:
     
     EventLoop *loop_;
     TcpServer server_;
-    //默认走Echo路由表
-    std::shared_ptr<Selector> default_selector_;
+    
+    //Echo/chat服务
+    std::shared_ptr<Selector> im_selector_;
+    //默认的llm集群
+    std::shared_ptr<Selector> default_llm_selector_ ;
+    //针对大型模型分发 分发到对应的推理集群
     std::unordered_map<std::string,std::shared_ptr<Selector>> route_table_;
+
     std::vector<std::shared_ptr<ServerNode>> serverGroup_;
+    ApiKeyAuthenticator auth_;
 
 };
