@@ -74,6 +74,16 @@ Client ──TCP──▶ L4 LB Server ──TCP──▶ Backend Pool
   - 故障节点自动隔离，恢复后自动权重恢复
 - **写时复制 (COW)**：节点选择时采用 `shared_ptr` 写时复制替代加锁，读取路径零锁开销
 
+### 通用 HTTP 应用层模块 (Http)
+
+Vortex-Net 将通用 HTTP 能力从七层网关中剥离为独立的 `Http` 模块（编译为 `libHttp.so`），与代理层平级：
+
+- **HttpParser**：纯 HTTP 协议解析器，只负责请求/响应解析与报文边界状态机（`kExpectHeaders → kExpectBody → kGotAll`），不含任何网关/后端转发逻辑，可被任意 HTTP 场景复用
+- **HttpServer**：通用 HTTP 服务组件，为每个连接维护独立的解析上下文，自动处理头部解析、Body 累积与完整请求分发，对外仅暴露 `RequestCallback` 回调，业务侧无需感知半包/粘包细节
+- **picohttpparser**：零拷贝 C 解析器（由原 L7 目录迁移至此）
+
+七层网关的 `HttpContext` 现在组合 `HttpParser` 与后端连接，仅维护请求上下文，解析逻辑全部下沉到本模块。
+
 ### 七层负载均衡 (L7 Proxy / LLM Gateway)
 
 ```
@@ -97,7 +107,7 @@ Client ──TCP──▶ L4 LB Server ──TCP──▶ Backend Pool
               └─────────────────────────────────────────┘
 ```
 
-- **HTTP 协议深度解析**：集成 picohttpparser（零拷贝 C 解析器），支持完整的 HTTP 请求/响应解析
+- **HTTP 协议深度解析**：复用 `Http` 模块的 `HttpParser`（基于 picohttpparser 零拷贝 C 解析器），支持完整的 HTTP 请求/响应解析
 - **模型感知路由 (Model-Aware Routing)**：根据请求路径中的模型名称（如 `/v1/chat/completions` body 中的 `model` 字段）将请求动态路由到对应的后端模型集群，支持 Qwen、Llama、GPT 等多模型混合部署
 - **动态路由表**：支持运行时按模型名注册/注销后端节点集群，未命中时回退到默认兜底集群
 - **连接池管理**：
@@ -150,10 +160,13 @@ Vortex-Net/
 │       │   └── HealthCheck/ # 健康检查模块
 │       └── L7/              # 七层代理 (LLM Gateway)
 │           ├── LB_Server    # L7 负载均衡服务器 (HTTP 网关)
-│           ├── HttpContext  # HTTP 协议解析 & 状态机
+│           ├── HttpContext  # 组合 HttpParser + 后端连接，维护请求上下文
 │           ├── RemoteClient # 后端 HTTP 连接 & 双向转发
-│           ├── ConnectionPool # 连接池 (thread_local)
-│           └── picohttpparser # 高性能 HTTP 解析器 (C)
+│           └── ConnectionPool # 连接池 (thread_local)
+├── Http/                   # 通用 HTTP 应用层模块（与代理平级）
+│   ├── HttpParser          # 纯 HTTP 协议解析器 & 报文边界状态机
+│   ├── HttpServer          # 通用 HTTP 服务组件（每连接独立上下文）
+│   └── picohttpparser      # 高性能 HTTP 解析器 (C)
 ├── Codec/                  # 协议编解码
 │   ├── TLVCodec.h           # TLV 二进制协议
 │   └── protocol.h           # 消息格式定义
@@ -181,8 +194,9 @@ cmake .. && make -j$(nproc)
 
 编译产出：
 - `lib/libVortex-Net.so` — 网络核心库
+- `lib/libHttp.so` — 通用 HTTP 应用层库（协议解析 + HTTP 服务）
 - `Proxy/lib/libL4_Proxy.so` — 四层负载均衡库
-- `Proxy/lib/libL7_Proxy.so` — 七层负载均衡库 (LLM Gateway)
+- `Proxy/lib/libL7_Proxy.so` — 七层负载均衡库 (LLM Gateway，依赖 libHttp)
 
 ---
 
