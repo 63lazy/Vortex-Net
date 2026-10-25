@@ -35,6 +35,8 @@ TcpConnection::TcpConnection(EventLoop *loop,
                   highWaterMark_(64*1024*1024), //64M到达水位线
                   lastReceiveTime_(Timestamp::now().microSecondsSinceEpoch())
 {
+    //关闭Delayed ACK（延迟确认，等40ms看数据有没有回捎）
+    socket_->setTcpNonDelay(true);
     //给channel设置相应的回调函数
     channel_->setReadCallback([this](Timestamp recieveTime){
         handleRead(recieveTime);
