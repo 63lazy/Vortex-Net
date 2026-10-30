@@ -25,6 +25,7 @@ public:
     size_t bytesRemaining(){ return parser_.bytesRemaining(); }
     bool isResponseChunked(){ return parser_.isResponseChunked(); }
     const HttpRequest& request(){return parser_.request();}
+    size_t contentLength(){return parser_.contentLength();}
 
     // 组合 reset：先重置解析器；解析的是响应时再释放后端连接
     void reset(){

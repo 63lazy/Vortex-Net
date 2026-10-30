@@ -48,6 +48,8 @@ public:
     size_t bytesRemaining(){return content_length_-body_bytes_read_;}
     //分块传输(流式chunked传输)
     bool isResponseChunked(){return resp_is_chunked_;}
+    //文本长度
+    size_t contentLength(){return content_length_;}
 private:
     //请求字段
     HttpRequest header_;
