@@ -1,5 +1,5 @@
 #include <memory>
-#include<string>
+#include <string>
 #include <Vortex-Net/TcpServer.h>
 #include <Vortex-Net/logger.h>
 #include <Vortex-Net/Proxy/Common/ServerNode.h>
@@ -8,6 +8,8 @@
 #include <Vortex-Net/Proxy/L7/ConnectionPool.h>
 #include <Vortex-Net/Proxy/L7/HttpContext.h>
 #include <Vortex-Net/Proxy/L7/Middleware/ApiKeyAuth.h>
+#include <Vortex-Net/Proxy/L7/Middleware/TokenBucket.h>
+
 class LB_Server{
 public: 
     using remoteClientPtr=std::shared_ptr<RemoteClient>;
@@ -66,6 +68,14 @@ public:
     void loadKeys(const std::vector<std::string> &keys){
         auth_.load(keys);
     }
+    //令牌桶更新
+    void updateRateLimit(const std::string& cluster_name, uint32_t new_cap, uint32_t new_rate) {
+        if (cluster_name == "llm") {
+            llm_limiter_.update(new_cap, new_rate);
+        } else if (cluster_name == "im") {
+            im_limiter_.update(new_cap, new_rate);
+        }
+    }
 private:
     void onConnection(const TcpConnectionPtr &conn){
         if(conn->connected()){
@@ -110,6 +120,14 @@ private:
                     conn->shutdown();
                     return;
                 }
+                uint32_t estimated_tokens=std::max(1u,static_cast<uint32_t>(parser->contentLength()/4));
+                if(!llm_limiter_.tryAcquire(estimated_tokens)){
+                    auto const resp=TokenBucket::tooManyRequestsResponse();
+                    conn->send(resp.data(),resp.size());
+                    conn->shutdown();
+                    return ;
+                }
+                //防止content_length==0的情况
                 std::string model_name = parser->parseModelName(buf);
                 auto it=route_table_.find(model_name);
                 if(it!=route_table_.end()) target_selector=it->second;
@@ -122,7 +140,13 @@ private:
                 }
                 addr=std::move(target_selector->getNextServer(model_name));
             }
-            else if(parser->request().path.starts_with("/im")){
+            else if(parser->request().path.starts_with("/im")||parser->request().path.starts_with("/api/im")){
+                if(!im_limiter_.tryAcquire(1)){
+                    auto const resp=TokenBucket::tooManyRequestsResponse();
+                    conn->send(resp.data(),resp.size());
+                    conn->shutdown();
+                    return ;
+                }
                 target_selector=im_selector_;
                 addr = std::move(target_selector->getNextServer(parser->request().path));
             }
@@ -171,4 +195,8 @@ private:
     std::vector<std::shared_ptr<ServerNode>> serverGroup_;
     ApiKeyAuthenticator auth_;
 
+    //大模型限流
+    TokenBucket llm_limiter_{8192, 2048};
+    //基础通信限流桶：高流速、大容量（防高频脚本恶意刷屏/CC攻击）
+    TokenBucket im_limiter_{10000, 5000};
 };

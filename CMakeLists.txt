@@ -105,6 +105,7 @@ add_library(L7_Proxy SHARED
     Proxy/src/L7/HttpContext.cc
     Proxy/src/L7/ConnecitonPool.cc
     Proxy/src/L7/Middleware/ApiKeyAuth.cc
+    Proxy/src/L7/Middleware/TokenBucket.cc
     # Common 通用节点选择器
     Proxy/src/Common/Selector.cc
 )
