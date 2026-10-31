@@ -1,3 +1,4 @@
+#pragma once
 #include <Vortex-Net/Proxy/L7/Middleware/TokenBucket.h>
 
 #include <chrono>
