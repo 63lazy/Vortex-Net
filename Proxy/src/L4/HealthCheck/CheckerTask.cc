@@ -19,12 +19,15 @@ CheckerTask::CheckerTask(EventLoop *loop,std::string &name,const std::shared_ptr
                 is_probing_(false)
 {}
 void CheckerTask::Init(){
-    auto self = shared_from_this();
-    client_->setConnectionCallback([self](const TcpConnectionPtr &conn){
-        self->onConnection(conn);
+    //捕获弱引用防止循环引用导致CheckerTask无法销毁
+    auto weak = weak_from_this();
+    client_->setConnectionCallback([weak](const TcpConnectionPtr &conn){
+        if(auto self = weak.lock())
+            self->onConnection(conn);
     });
-    client_->setErrorCallback([self](int saveError){
-        self->onError(saveError);
+    client_->setErrorCallback([weak](int saveError){
+        if(auto self = weak.lock())
+            self->onError(saveError);
     });
 }
 
