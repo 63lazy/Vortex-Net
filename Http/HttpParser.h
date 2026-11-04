@@ -50,6 +50,8 @@ public:
     bool isResponseChunked(){return resp_is_chunked_;}
     //文本长度
     size_t contentLength(){return content_length_;}
+    //响应状态码（仅解析响应时有效，如 200、502）
+    int statusCode() const {return resp_status_;}
 private:
     //请求字段
     HttpRequest header_;

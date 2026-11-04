@@ -1,5 +1,6 @@
 #include <Vortex-Net/TcpClient.h>
 #include <Vortex-Net/logger.h>
+#include <Vortex-Net/Proxy/L7/Middleware/CircuitBreaker.h>
 #include <any>
 #include <memory>
 #include "HttpContext.h"
@@ -32,6 +33,10 @@ void RemoteClient::onConnection(const TcpConnectionPtr &conn){
                 client->send("HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 client->shutdown();
             }
+            if(backendstatusCallback_) {
+                backendstatusCallback_(502);
+                backendstatusCallback_ = nullptr;
+            }
         }
 
         //连接池统一回收连接对象
@@ -39,9 +44,7 @@ void RemoteClient::onConnection(const TcpConnectionPtr &conn){
         //因为仅剩的可能存在的另一个引用在客户端的conn里，而它已经因为异常断开随着conn析构了而释放了
         if(errorCallback_){
             auto self=shared_from_this();
-            loop_->queueInLoop([self](){
-                self->errorCallback_(self);
-            });
+            errorCallback_(self);
         }
     }
 }
@@ -85,6 +88,11 @@ void RemoteClient::onMessage(const TcpConnectionPtr &conn,Buffer *buf,Timestamp 
         }
         //成功解析头部
         else if(parser->parseResponse(buf,time)){
+            if(backendstatusCallback_){
+                backendstatusCallback_(parser->statusCode());
+                //回调执行完之后马上置空，防止一次故障触发两次回调
+                backendstatusCallback_=nullptr;
+            }
             //仅消费掉头部
             size_t header_len=parser->headerLen();
             client_conn_ptr->send(buf->peek(),header_len);
@@ -130,6 +138,27 @@ void RemoteClient::onMessage(const TcpConnectionPtr &conn,Buffer *buf,Timestamp 
     }
     
 }
+//用于处理后端无法连接的回调
+void RemoteClient::onError(int savedErrno){
+    LOG_WARN("RemoteClient connect failed, errno=%d", savedErrno);
+    //说明已绑定客户端
+    if(is_busy_){
+        auto client = clientConn_.lock();
+        if (client) {
+            client->send("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            client->shutdown();
+        }
+    }
+    //熔断器记一次失败
+    if(backendstatusCallback_){
+        backendstatusCallback_(-1);
+        backendstatusCallback_ = nullptr;
+    }
+    if(errorCallback_) {
+        auto self = shared_from_this();
+        errorCallback_(self);
+    }
+}
 void RemoteClient::sendToBackend(Buffer *buf,size_t n){
     if(!tc_->send(buf->peek(),n)){
         pendingBuffer_.append(buf->peek(),n);
@@ -147,6 +176,10 @@ void RemoteClient::connect(){
     {
         if(auto self=weakptr.lock())
             self->onMessage(conn,buf,time);
+    });
+    tc_->setErrorCallback([weakptr](int errorno){
+        if(auto self=weakptr.lock())
+            self->onError(errorno);
     });
     tc_->connect();
 }

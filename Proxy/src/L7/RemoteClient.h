@@ -4,6 +4,8 @@ class RemoteClient:public std::enable_shared_from_this<RemoteClient>{
 public:
     using ErrorCallback = std::function<void(const std::shared_ptr<RemoteClient>&)>;
     using ReturnCallback = std::function<void(const std::shared_ptr<RemoteClient>&)>;
+    using BackendStatusCallback = std::function<void(int status_code)>;
+
     RemoteClient(EventLoop *loop, const InetAddress &serverAddr, const std::string &name);
     void stop(){
         tc_->stop();
@@ -12,12 +14,12 @@ public:
     //连接后端服务器
     void connect();
 
-    //绑定rclient
+    //绑定客户端Conn
     void bindClient(const TcpConnectionPtr &conn){
         clientConn_=conn;
         is_busy_=true;
     }
-    //解绑rclient
+    //解绑客户端Conn
     void unbind(){
         clientConn_.reset();
         is_busy_=false;
@@ -28,22 +30,26 @@ public:
 
     void setErrorCallback(ErrorCallback cb){errorCallback_ = std::move(cb);}
     void setReturnCallback(ReturnCallback cb){returnCallback_ = std::move(cb);}
+    void setBackendStatusCallback(BackendStatusCallback cb){backendstatusCallback_ = std::move(cb);}
     void forceclose(){tc_->disconnect();}
     void clearPendingBuffer(){ pendingBuffer_.retrieveAll();}
 private:
     void onConnection(const TcpConnectionPtr &conn);
     void onMessage(const TcpConnectionPtr &conn,Buffer *buf,Timestamp time);
+    void onError(int saveError);
 
     std::shared_ptr<TcpClient> tc_;
     EventLoop *loop_;
     //客户端的弱引用
     std::weak_ptr<TcpConnection> clientConn_;
     Buffer pendingBuffer_;
-    //判断改连接是否已被绑定
+    //判断该连接是否已被绑定
     bool is_busy_;
 
     //由连接池传入，用于自毁，清理甚至删除这个RemoteClient对象
     ErrorCallback errorCallback_;
     //调用returnConnection归还连接回到连接池
     ReturnCallback returnCallback_;
+    //熔断器更新回调
+    BackendStatusCallback backendstatusCallback_;
 };

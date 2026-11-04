@@ -110,6 +110,7 @@ Vortex-Net 将通用 HTTP 能力从七层网关中剥离为独立的 `Http` 模�
 - **HTTP 协议深度解析**：复用 `Http` 模块的 `HttpParser`（基于 picohttpparser 零拷贝 C 解析器），支持完整的 HTTP 请求/响应解析
 - **模型感知路由 (Model-Aware Routing)**：根据请求路径中的模型名称（如 `/v1/chat/completions` body 中的 `model` 字段）将请求动态路由到对应的后端模型集群，支持 Qwen、Llama、GPT 等多模型混合部署
 - **动态路由表**：支持运行时按模型名注册/注销后端节点集群，未命中时回退到默认兜底集群
+- **集群独立治理 (ClusterManager)**：Echo/chat 服务、默认 LLM 集群、各用户自定义推理集群各自聚合独立的选路器 + 熔断器 + 限流器，按集群隔离治理，避免全局共享状态
 - **连接池管理**：
   - 每线程独立的连接池 (`thread_local`)，实现无锁的连接借用/归还
   - 每后端节点最大空闲连接数可配置，超限连接自动关闭
@@ -117,6 +118,34 @@ Vortex-Net 将通用 HTTP 能力从七层网关中剥离为独立的 `Http` 模�
 - **流式传输支持**：完整实现 HTTP Chunked Transfer Encoding 解码，支持 SSE (Server-Sent Events) 和大模型流式推理输出
 - **报文边界感知**：精确区分 HTTP 头部与 Body 的边界，支持头部与 Body 同包到达、跨包 Body 等复杂场景，保证流式场景下不丢数据、不粘包
 - **请求/响应生命周期管理**：`HttpContext` 状态机追踪完整请求-响应生命周期 (`kExpectHeaders → kExpectBody → kGotAll`)，支持连接复用场景下的状态重置
+
+### 七层中间件 (L7 Middleware)
+
+每个独立集群通过 `ClusterManager` 聚合三件套治理组件，请求按 **鉴权 → 模型路由 → 限流 → 熔断 → 选路** 的流水线依次处理：
+
+| 中间件 | 职责 | 并发模型 |
+|--------|------|----------|
+| **ApiKeyAuthenticator** | API Key 鉴权，校验 `Authorization: Bearer <token>` 头，非法返回 401 | 写时复制 (COW) + `shared_ptr` 快照 + 无锁二分查找 |
+| **TokenBucket** | 令牌桶限流，超限返回 429，支持运行时动态更新容量/速率 | 无锁 CAS (`compare_exchange_weak`) + `alignas(8)` 打包配置防撕裂 |
+| **CircuitBreaker** | 三态熔断器 (close → open → half_open)，连续失败跳闸、冷却后半开放量试探，超限返回 503 | `std::mutex` 串行化状态流转 |
+
+**ApiKeyAuthenticator（鉴权）**：
+- 支持全量 `load`、增量 `addKey`、幂等 `removeKey`，维护有序 Key 集合以支持二分查找
+- 透明比较器 + `std::string_view` 零拷贝查找；读路径仅短暂加锁取 `shared_ptr` 快照后无锁「二分查找」
+- 写路径写时复制：`use_count() > 1` 判定有读线程持有旧快照时先深拷贝再修改，杜绝数据竞争
+
+**TokenBucket（限流）**：
+- 基于 `steady_clock` 单调时钟，`timestamp_ms + tokens` 打包为单个 8 字节 `State` 原子对象
+- 容量与补充速率打包为 `Config` 原子结构体，一次 `load` 拿到一致性快照，杜绝配置撕裂
+- 乐观 CAS 循环：仅在累计时间足以产出至少 1 个令牌时才推进时间戳，保留不足一枚的余数时间片
+- `update` 走低频写路径，加锁保证串行化，先按旧配置结算令牌再切换新配置
+
+**CircuitBreaker（熔断）**：
+- 标准三态流转：`close` 连续失败达阈值 → `open`（冷却期内全部拒绝）→ 冷却期满进入 `half_open` 放行单个试探请求 → 成功回 `close` / 失败重新 `open`
+- `half_open` 阶段仅放行一个先锋请求，其余一律拦截，防止故障恢复瞬间惊群
+- 状态流转全程加锁串行化，成功/失败回调驱动状态回迁
+
+三个组件的错误报文（401 / 429 / 503）均以 `static constexpr char[]` 构造在只读数据段 (`.rodata`)，返回 `std::string_view` 实现零拷贝发送。
 
 ---
 
@@ -162,7 +191,11 @@ Vortex-Net/
 │           ├── LB_Server    # L7 负载均衡服务器 (HTTP 网关)
 │           ├── HttpContext  # 组合 HttpParser + 后端连接，维护请求上下文
 │           ├── RemoteClient # 后端 HTTP 连接 & 双向转发
-│           └── ConnectionPool # 连接池 (thread_local)
+│           ├── ConnectionPool # 连接池 (thread_local)
+│           └── Middleware/  # 七层中间件
+│               ├── ApiKeyAuth      # API Key 鉴权 (COW + 无锁二分)
+│               ├── TokenBucket     # 令牌桶限流 (无锁 CAS)
+│               └── CircuitBreaker  # 三态熔断器
 ├── Http/                   # 通用 HTTP 应用层模块（与代理平级）
 │   ├── HttpParser          # 纯 HTTP 协议解析器 & 报文边界状态机
 │   ├── HttpServer          # 通用 HTTP 服务组件（每连接独立上下文）
@@ -207,7 +240,7 @@ cmake .. && make -j$(nproc)
 - **并发模型**：Multiple Reactors + One Loop Per Thread
 - **内存模型**：RAII + `shared_ptr`/`weak_ptr` 生命周期管理 + SBO 优化
 - **IO 模型**：Non-blocking IO + Epoll LT + eventfd 异步唤醒
-- **设计模式**：Reactor、Observer/Callback、Strategy (Selector 算法族)、Object Pool (ConnectionPool)、Copy-on-Write
+- **设计模式**：Reactor、Observer/Callback、Strategy (Selector 算法族)、Object Pool (ConnectionPool)、Copy-on-Write、Token Bucket、Circuit Breaker
 
 ---
 
@@ -224,9 +257,9 @@ cmake .. && make -j$(nproc)
 - [x] **七层负载均衡 (LLM Gateway)**：HTTP 解析 + 模型路由 + 连接池 + Chunked 流式传输
 - [ ] 配置文件驱动 (YAML/JSON) 替代硬编码
 - [ ] 管理 API 端点 (metrics、health 查询、动态上下线)
-- [ ] 限流与熔断 (Rate Limiting & Circuit Breaker)
+- [x] 限流与熔断 (TokenBucket + CircuitBreaker)
 - [ ] Prometheus metrics 集成
 - [ ] WebSocket 协议升级支持
 - [ ] gRPC 协议支持
-- [ ] 基于令牌的认证与鉴权中间件
+- [x] 基于 API Key 的认证鉴权中间件 (ApiKeyAuthenticator)
 - [ ] 请求级缓存 (语义缓存，适用于 LLM 场景)

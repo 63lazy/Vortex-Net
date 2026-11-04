@@ -26,6 +26,7 @@ public:
     bool isResponseChunked(){ return parser_.isResponseChunked(); }
     const HttpRequest& request(){return parser_.request();}
     size_t contentLength(){return parser_.contentLength();}
+    int statusCode() const {return parser_.statusCode();}
 
     // 组合 reset：先重置解析器；解析的是响应时再释放后端连接
     void reset(){

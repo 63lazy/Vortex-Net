@@ -9,7 +9,18 @@
 #include <Vortex-Net/Proxy/L7/HttpContext.h>
 #include <Vortex-Net/Proxy/L7/Middleware/ApiKeyAuth.h>
 #include <Vortex-Net/Proxy/L7/Middleware/TokenBucket.h>
+#include <Vortex-Net/Proxy/L7/Middleware/CircuitBreaker.h>
 
+struct ClusterManager {
+    std::shared_ptr<Selector> selector;         // 负载均衡选路器
+    std::shared_ptr<CircuitBreaker> breaker;     // 专属熔断器
+    std::shared_ptr<TokenBucket> limiter;       // 专属令牌桶限流器
+
+    ClusterManager(EventLoop* loop, uint32_t capacity, uint32_t rate)
+        : selector(std::make_shared<Selector>(loop)),
+          breaker(std::make_shared<CircuitBreaker>()),
+          limiter(std::make_shared<TokenBucket>(capacity, rate)) {}
+};
 class LB_Server{
 public: 
     using remoteClientPtr=std::shared_ptr<RemoteClient>;
@@ -20,7 +31,7 @@ public:
                 ):
                 loop_(loop),
                 server_(loop,listenAddr,nameArg),
-                im_selector_(std::make_shared<Selector>(loop)),
+                im_cluster_(std::make_shared<ClusterManager>(loop, 10000, 5000)),
                 serverGroup_(std::move(serverGroup)),
                 auth_()
     {
@@ -35,7 +46,7 @@ public:
         });
         //构造时仅传入默认Echo集群配置
         for(auto &node:serverGroup_){
-            im_selector_->addNode(node);
+            im_cluster_->selector->addNode(node);
         }
     }
     void setThreadNum(int n){
@@ -49,21 +60,21 @@ public:
         auto it=route_table_.find(model_name);
         //集群还不存在，新建一个
         if(it==route_table_.end()){
-            auto selector=std::make_shared<Selector>(loop_);
-            selector->addNode(node);
-            route_table_[model_name] = std::move(selector); 
+            auto cluster=std::make_shared<ClusterManager>(loop_, 8192, 2048);
+            cluster->selector->addNode(node);
+            route_table_[model_name] = std::move(cluster); 
         }
         //集群已存在，增加新节点
         else{
-            it->second->addNode(node); 
+            it->second->selector->addNode(node); 
         }
     }
     //用户调用用于初始化默认大模型节点
     void addDefaultLlmNode(const std::shared_ptr<ServerNode>& node) {
-        if (!default_llm_selector_) {
-            default_llm_selector_ = std::make_shared<Selector>(loop_);
+        if (!default_llm_cluster_) {
+            default_llm_cluster_ = std::make_shared<ClusterManager>(loop_, 8192, 2048);
         }
-        default_llm_selector_->addNode(node);
+        default_llm_cluster_->selector->addNode(node);
     }
     void loadKeys(const std::vector<std::string> &keys){
         auth_.load(keys);
@@ -71,9 +82,9 @@ public:
     //令牌桶更新
     void updateRateLimit(const std::string& cluster_name, uint32_t new_cap, uint32_t new_rate) {
         if (cluster_name == "llm") {
-            llm_limiter_.update(new_cap, new_rate);
+            if (default_llm_cluster_) default_llm_cluster_->limiter->update(new_cap, new_rate);
         } else if (cluster_name == "im") {
-            im_limiter_.update(new_cap, new_rate);
+            im_cluster_->limiter->update(new_cap, new_rate);
         }
     }
 private:
@@ -109,46 +120,68 @@ private:
         }
         //成功解析头部
         else if(parser->parseRequest(buf,time)){
-            std::shared_ptr<Selector> target_selector;
+            std::shared_ptr<ClusterManager> target_cluster;
             InetAddress addr;
+
             if(parser->request().path.starts_with("/v1"))
             {
-                
+                //鉴权
                 if(!auth_.authenticate(parser->request().headers)){
                     const auto resp = ApiKeyAuthenticator::unauthorizedResponse();
                     conn->send(resp.data(), resp.size());
                     conn->shutdown();
                     return;
                 }
-                uint32_t estimated_tokens=std::max(1u,static_cast<uint32_t>(parser->contentLength()/4));
-                if(!llm_limiter_.tryAcquire(estimated_tokens)){
-                    auto const resp=TokenBucket::tooManyRequestsResponse();
-                    conn->send(resp.data(),resp.size());
-                    conn->shutdown();
-                    return ;
-                }
-                //防止content_length==0的情况
+                //解析模型名，确定目标集群（专属推理集群 > 默认llm集群 > 404）
                 std::string model_name = parser->parseModelName(buf);
                 auto it=route_table_.find(model_name);
-                if(it!=route_table_.end()) target_selector=it->second;
-                else if(default_llm_selector_) target_selector=default_llm_selector_;
+                if(it!=route_table_.end()){
+                    target_cluster = it->second;
+                }
+                else if(default_llm_cluster_){
+                    target_cluster = default_llm_cluster_;
+                }
                 else {
                     //既没有专属集群，也没有默认集群，直接拒绝
                     conn->send("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                     conn->shutdown();
                     return;
                 }
-                addr=std::move(target_selector->getNextServer(model_name));
-            }
-            else if(parser->request().path.starts_with("/im")||parser->request().path.starts_with("/api/im")){
-                if(!im_limiter_.tryAcquire(1)){
+                //限流
+                uint32_t estimated_tokens=std::max(1u,static_cast<uint32_t>(parser->contentLength()/4));
+                if(!target_cluster->limiter->tryAcquire(estimated_tokens)){
                     auto const resp=TokenBucket::tooManyRequestsResponse();
                     conn->send(resp.data(),resp.size());
                     conn->shutdown();
                     return ;
                 }
-                target_selector=im_selector_;
-                addr = std::move(target_selector->getNextServer(parser->request().path));
+                //熔断
+                if(!target_cluster->breaker->canPass()){
+                    const auto resp = CircuitBreaker::serviceUnavailableResponse();
+                    conn->send(resp.data(), resp.size());
+                    conn->shutdown();
+                    return;
+                }
+                addr=std::move(target_cluster->selector->getNextServer(model_name));
+            }
+            else if(parser->request().path.starts_with("/im")||parser->request().path.starts_with("/api/im")){
+                target_cluster = im_cluster_;
+
+                //限流
+                if(!target_cluster->limiter->tryAcquire(1)){
+                    auto const resp=TokenBucket::tooManyRequestsResponse();
+                    conn->send(resp.data(),resp.size());
+                    conn->shutdown();
+                    return ;
+                }
+                //熔断
+                if(!target_cluster->breaker->canPass()){
+                    const auto resp = CircuitBreaker::serviceUnavailableResponse();
+                    conn->send(resp.data(), resp.size());
+                    conn->shutdown();
+                    return;
+                }
+                addr = std::move(target_cluster->selector->getNextServer(parser->request().path));
             }
             else {
                 //未知业务路径，网关直接返回 404 截断
@@ -159,6 +192,15 @@ private:
             std::string targetAddr=addr.toIpPort();
             
             auto remoteClientPtr = localPool->borrowConnection(targetAddr);
+            //绑定熔断器状态回调（每个集群持有独立的 breaker）
+            remoteClientPtr->setBackendStatusCallback([cluster = target_cluster](int status_code){
+                if(status_code>=200&&status_code<400){
+                    cluster->breaker->recordSuccess();
+                }else{
+                    //4xx/5xx错误
+                    cluster->breaker->recordFailure();
+                }
+            });
             remoteClientPtr->bindClient(conn);
             //用解析器绑定这个后端连接 后续转发消息体时需要用到
             parser->BoundRClient(remoteClientPtr);
@@ -185,18 +227,13 @@ private:
     EventLoop *loop_;
     TcpServer server_;
     
-    //Echo/chat服务
-    std::shared_ptr<Selector> im_selector_;
+    //Echo/chat服务集群
+    std::shared_ptr<ClusterManager> im_cluster_;
     //默认的llm集群
-    std::shared_ptr<Selector> default_llm_selector_ ;
+    std::shared_ptr<ClusterManager> default_llm_cluster_ ;
     //针对大型模型分发 分发到对应的推理集群
-    std::unordered_map<std::string,std::shared_ptr<Selector>> route_table_;
+    std::unordered_map<std::string,std::shared_ptr<ClusterManager>> route_table_;
 
     std::vector<std::shared_ptr<ServerNode>> serverGroup_;
     ApiKeyAuthenticator auth_;
-
-    //大模型限流
-    TokenBucket llm_limiter_{8192, 2048};
-    //基础通信限流桶：高流速、大容量（防高频脚本恶意刷屏/CC攻击）
-    TokenBucket im_limiter_{10000, 5000};
 };
