@@ -175,7 +175,9 @@ void Connector::retry(int sockfd,int saveError){
         retryDelayMs_=std::min(2*retryDelayMs_,kMaxRetryDelayMs);
     }
     else{
-        //如果禁止重试且传入了errorcallback_说明是健康检查，执行CheckerTask传入的errorcallback_快速返回连接状态
+        //如果禁止重试且传入了errorcallback_说明是健康检查或反向代理
+        //执行CheckerTask传入的errorcallback_快速返回连接状态
+        //执行反向代理传入的errorCallback_向客户端发送503报文
         if(!retry_&&errorCallback_){
             std::weak_ptr self(shared_from_this());
             loop_->queueInLoop([saveError,self](){
