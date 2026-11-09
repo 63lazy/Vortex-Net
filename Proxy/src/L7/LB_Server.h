@@ -3,24 +3,15 @@
 #include <Vortex-Net/TcpServer.h>
 #include <Vortex-Net/logger.h>
 #include <Vortex-Net/Proxy/Common/ServerNode.h>
-#include <Vortex-Net/Proxy/Common/Selector.h>
 #include <Vortex-Net/Proxy/L7/RemoteClient.h>
 #include <Vortex-Net/Proxy/L7/ConnectionPool.h>
 #include <Vortex-Net/Proxy/L7/HttpContext.h>
 #include <Vortex-Net/Proxy/L7/Middleware/ApiKeyAuth.h>
-#include <Vortex-Net/Proxy/L7/Middleware/TokenBucket.h>
-#include <Vortex-Net/Proxy/L7/Middleware/CircuitBreaker.h>
-
-struct ClusterManager {
-    std::shared_ptr<Selector> selector;         // 负载均衡选路器
-    std::shared_ptr<CircuitBreaker> breaker;     // 专属熔断器
-    std::shared_ptr<TokenBucket> limiter;       // 专属令牌桶限流器
-
-    ClusterManager(EventLoop* loop, uint32_t capacity, uint32_t rate)
-        : selector(std::make_shared<Selector>(loop)),
-          breaker(std::make_shared<CircuitBreaker>()),
-          limiter(std::make_shared<TokenBucket>(capacity, rate)) {}
-};
+#include <Vortex-Net/Proxy/L7/ClusterManager.h>
+#include <Vortex-Net/Proxy/L7/Pipeline.h>
+#include <Vortex-Net/Proxy/L7/Middleware/AuthMiddleware.h>
+#include <Vortex-Net/Proxy/L7/Middleware/RateLimitMiddleware.h>
+#include <Vortex-Net/Proxy/L7/Middleware/CircuitBreakerMiddleware.h>
 class LB_Server{
 public: 
     using remoteClientPtr=std::shared_ptr<RemoteClient>;
@@ -33,7 +24,9 @@ public:
                 server_(loop,listenAddr,nameArg),
                 im_cluster_(std::make_shared<ClusterManager>(loop, 10000, 5000)),
                 serverGroup_(std::move(serverGroup)),
-                auth_()
+                auth_(),
+                PrePipeline_(),
+                PostPipeline_()
     {
         server_.setConnectionCallback([this](const TcpConnectionPtr &conn){
             onConnection(conn);
@@ -48,6 +41,11 @@ public:
         for(auto &node:serverGroup_){
             im_cluster_->selector->addNode(node);
         }
+
+        //装配流水线：前置鉴权 → (模型路由) → 后置限流+熔断
+        PrePipeline_.addMiddleware(std::make_shared<AuthMiddleware>(auth_));
+        PostPipeline_.addMiddleware(std::make_shared<RateLimitMiddleware>());
+        PostPipeline_.addMiddleware(std::make_shared<CircuitBreakerMiddleware>());
     }
     void setThreadNum(int n){
         server_.setThreadNum(n);
@@ -120,21 +118,21 @@ private:
         }
         //成功解析头部
         else if(parser->parseRequest(buf,time)){
-            std::shared_ptr<ClusterManager> target_cluster;
             InetAddress addr;
+            const std::string& path = parser->request().path;
 
-            if(parser->request().path.starts_with("/v1"))
-            {
-                //鉴权
-                if(!auth_.authenticate(parser->request().headers)){
-                    const auto resp = ApiKeyAuthenticator::unauthorizedResponse();
-                    conn->send(resp.data(), resp.size());
-                    conn->shutdown();
-                    return;
-                }
-                //解析模型名，确定目标集群（专属推理集群 > 默认llm集群 > 404）
-                std::string model_name = parser->parseModelName(buf);
-                auto it=route_table_.find(model_name);
+            //前置流水线：鉴权（仅 /v1 生效，/im 自动放行）；此时尚未确定集群，传 nullptr
+            if(!PrePipeline_.execute(conn, parser, nullptr)){
+                return; // 鉴权中间件已回 401 并 shutdown
+            }
+
+            //确定目标集群与路由键
+            std::shared_ptr<ClusterManager> target_cluster;
+            std::string route_key;
+            if(path.starts_with("/v1")){
+                //解析模型名（专属推理集群 > 默认llm集群 > 404）
+                route_key = parser->parseModelName(buf);
+                auto it=route_table_.find(route_key);
                 if(it!=route_table_.end()){
                     target_cluster = it->second;
                 }
@@ -147,41 +145,10 @@ private:
                     conn->shutdown();
                     return;
                 }
-                //限流
-                uint32_t estimated_tokens=std::max(1u,static_cast<uint32_t>(parser->contentLength()/4));
-                if(!target_cluster->limiter->tryAcquire(estimated_tokens)){
-                    auto const resp=TokenBucket::tooManyRequestsResponse();
-                    conn->send(resp.data(),resp.size());
-                    conn->shutdown();
-                    return ;
-                }
-                //熔断
-                if(!target_cluster->breaker->canPass()){
-                    const auto resp = CircuitBreaker::serviceUnavailableResponse();
-                    conn->send(resp.data(), resp.size());
-                    conn->shutdown();
-                    return;
-                }
-                addr=std::move(target_cluster->selector->getNextServer(model_name));
             }
-            else if(parser->request().path.starts_with("/im")||parser->request().path.starts_with("/api/im")){
+            else if(path.starts_with("/im") || path.starts_with("/api/im")){
                 target_cluster = im_cluster_;
-
-                //限流
-                if(!target_cluster->limiter->tryAcquire(1)){
-                    auto const resp=TokenBucket::tooManyRequestsResponse();
-                    conn->send(resp.data(),resp.size());
-                    conn->shutdown();
-                    return ;
-                }
-                //熔断
-                if(!target_cluster->breaker->canPass()){
-                    const auto resp = CircuitBreaker::serviceUnavailableResponse();
-                    conn->send(resp.data(), resp.size());
-                    conn->shutdown();
-                    return;
-                }
-                addr = std::move(target_cluster->selector->getNextServer(parser->request().path));
+                route_key = path;
             }
             else {
                 //未知业务路径，网关直接返回 404 截断
@@ -189,6 +156,15 @@ private:
                 conn->shutdown();
                 return;
             }
+
+            //后置流水线：限流 → 熔断
+            if(!PostPipeline_.execute(conn, parser, target_cluster)){
+                return; // 限流/熔断中间件已回 429/503 并 shutdown
+            }
+
+            //选路
+            addr = std::move(target_cluster->selector->getNextServer(route_key));
+
             std::string targetAddr=addr.toIpPort();
             
             auto remoteClientPtr = localPool->borrowConnection(targetAddr);
@@ -236,4 +212,7 @@ private:
 
     std::vector<std::shared_ptr<ServerNode>> serverGroup_;
     ApiKeyAuthenticator auth_;
+
+    Pipeline PrePipeline_;
+    Pipeline PostPipeline_;
 };

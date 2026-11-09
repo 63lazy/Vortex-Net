@@ -121,7 +121,17 @@ Vortex-Net 将通用 HTTP 能力从七层网关中剥离为独立的 `Http` 模�
 
 ### 七层中间件 (L7 Middleware)
 
-每个独立集群通过 `ClusterManager` 聚合三件套治理组件，请求按 **鉴权 → 模型路由 → 限流 → 熔断 → 选路** 的流水线依次处理：
+七层中间件统一继承自抽象基类 `HttpMiddleware`（`Middleware.h`），其 `process()` 返回 `MiddlewareAction`（`Continue` 放行 / `Intercept` 拦截）。`Pipeline`（`Pipeline.h`）作为中间件链，`execute()` 依次调用链上各中间件，任一返回 `Intercept` 立即终止请求。三个治理组件各自封装为薄包装中间件：
+
+| 包装中间件 | 继承自 `HttpMiddleware` | 封装组件 | 所属流水线 |
+|-----------|------------------------|----------|-----------|
+| **AuthMiddleware** | 是 | `ApiKeyAuthenticator` | 前置 `PrePipeline_` |
+| **RateLimitMiddleware** | 是 | `TokenBucket` | 后置 `PostPipeline_` |
+| **CircuitBreakerMiddleware** | 是 | `CircuitBreaker` | 后置 `PostPipeline_` |
+
+`LB_Server` 构造时装配两条流水线：`PrePipeline_` 只挂鉴权，`PostPipeline_` 挂限流 + 熔断；模型路由逻辑夹在两者之间执行，构成完整处理链 **鉴权 → 模型路由 → 限流 → 熔断 → 选路**。中间件通过 `std::shared_ptr<ClusterManager>` 访问目标集群专属治理组件（前置鉴权阶段集群尚未确定，传 `nullptr`）。
+
+每个独立集群通过 `ClusterManager` 聚合三件套治理组件（选路器 + 熔断器 + 限流器，定义于独立头文件 `ClusterManager.h`）：
 
 | 中间件 | 职责 | 并发模型 |
 |--------|------|----------|
@@ -189,13 +199,19 @@ Vortex-Net/
 │       │   └── HealthCheck/ # 健康检查模块
 │       └── L7/              # 七层代理 (LLM Gateway)
 │           ├── LB_Server    # L7 负载均衡服务器 (HTTP 网关)
+│           ├── ClusterManager # 集群治理单元（独立选路器+熔断器+限流器）
+│           ├── Pipeline     # 中间件流水线执行器
 │           ├── HttpContext  # 组合 HttpParser + 后端连接，维护请求上下文
 │           ├── RemoteClient # 后端 HTTP 连接 & 双向转发
 │           ├── ConnectionPool # 连接池 (thread_local)
 │           └── Middleware/  # 七层中间件
-│               ├── ApiKeyAuth      # API Key 鉴权 (COW + 无锁二分)
-│               ├── TokenBucket     # 令牌桶限流 (无锁 CAS)
-│               └── CircuitBreaker  # 三态熔断器
+│               ├── Middleware          # HttpMiddleware 抽象基类 + MiddlewareAction
+│               ├── ApiKeyAuth          # API Key 鉴权 (COW + 无锁二分)
+│               ├── TokenBucket         # 令牌桶限流 (无锁 CAS)
+│               ├── CircuitBreaker      # 三态熔断器
+│               ├── AuthMiddleware      # 鉴权包装中间件 (前置流水线)
+│               ├── RateLimitMiddleware # 限流包装中间件 (后置流水线)
+│               └── CircuitBreakerMiddleware # 熔断包装中间件 (后置流水线)
 ├── Http/                   # 通用 HTTP 应用层模块（与代理平级）
 │   ├── HttpParser          # 纯 HTTP 协议解析器 & 报文边界状态机
 │   ├── HttpServer          # 通用 HTTP 服务组件（每连接独立上下文）
@@ -240,7 +256,7 @@ cmake .. && make -j$(nproc)
 - **并发模型**：Multiple Reactors + One Loop Per Thread
 - **内存模型**：RAII + `shared_ptr`/`weak_ptr` 生命周期管理 + SBO 优化
 - **IO 模型**：Non-blocking IO + Epoll LT + eventfd 异步唤醒
-- **设计模式**：Reactor、Observer/Callback、Strategy (Selector 算法族)、Object Pool (ConnectionPool)、Copy-on-Write、Token Bucket、Circuit Breaker
+- **设计模式**：Reactor、Observer/Callback、Strategy (Selector 算法族)、Object Pool (ConnectionPool)、Copy-on-Write、Chain of Responsibility (Pipeline 中间件链)、Token Bucket、Circuit Breaker
 
 ---
 
